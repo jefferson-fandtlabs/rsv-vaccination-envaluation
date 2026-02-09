@@ -10,6 +10,7 @@
 # ==============================================================================
 
 library(data.table) # Fast data manipulation and storage for simulation results
+library(writexl)    # Excel file export
 
 # ==============================================================================
 # Step 2: Define variables
@@ -1142,6 +1143,10 @@ results_summary <- data.table(
     format_icer(row3_icer, row3_dominated)
   )
 )
+
+# Export results to Excel
+write_xlsx(results_summary, "rsv_cea_results.xlsx")
+cat("Results exported to: rsv_cea_results.xlsx\n")
 
 # Print formatted results table to console
 cat("\n")
