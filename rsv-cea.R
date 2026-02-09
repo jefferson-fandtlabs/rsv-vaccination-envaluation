@@ -965,8 +965,9 @@ while (no_susceptible_count < 2 && period <= max_periods) {
   # Check stopping conditions
   # ----------------------------------------------------------------------------
 
-  # Count consecutive periods with susceptible population below threshold
-  if (s_vn_end < susceptible_threshold) {
+  # Count consecutive periods with susceptible populations below threshold
+  # Check BOTH s_vn (vaccine-naive) AND s_ve (vaccine-experienced) to capture full impact of waning immunity
+  if (s_vn_end < susceptible_threshold && s_ve_end < susceptible_threshold) {
     no_susceptible_count <- no_susceptible_count + 1
   } else {
     no_susceptible_count <- 0
@@ -1290,8 +1291,9 @@ while (no_susceptible_count < 2 && period <= max_periods) {
   # Check stopping conditions
   # ----------------------------------------------------------------------------
 
-  # Count consecutive periods with susceptible population below threshold
-  if (s_vn_end < susceptible_threshold) {
+  # Count consecutive periods with susceptible populations below threshold
+  # Check BOTH s_vn (vaccine-naive) AND s_ve (vaccine-experienced) to capture full impact of waning immunity
+  if (s_vn_end < susceptible_threshold && s_ve_end < susceptible_threshold) {
     no_susceptible_count <- no_susceptible_count + 1
   } else {
     no_susceptible_count <- 0
