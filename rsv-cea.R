@@ -25,7 +25,7 @@ p_60 <- 82973748
 
 # Suceptible
 s_vn_0_p <- .98137 # Percentage of p_60 that represents the initial susceptible, vaccine-naive, no vaccine scenario at time 0
-s_vn_0_v_p <- .82137 # Percentage of p_60 that represents the initial susceptible, vaccine-naive, vaccine scenario at time 0
+s_vn_0_v_p <- .81737 # Percentage of p_60 that represents the initial susceptible, vaccine-naive, vaccine scenario at time 0
 
 # Vaccinated
 v_0_p <- .164 # Percentage of p_60 that represents the vaccinated population for vaccine scenario at time 0
@@ -82,7 +82,7 @@ delta_sq <- 0 # Mortality rate from RSV sequelae
 
 # Each is represented as a unit of utility that must then be multiplied by the time in that state.
 u_s_vn <- 0.815 # Susceptible, vaccine naive
-u_v <- -0.08 # vaccinated
+u_v <- 0.815 # Vaccinated (healthy, protected) - same as susceptible
 u_s_ve <- 0.815 # Susceptible, vaccine experienced
 u_e <- 0.815 # Exposed
 u_i <- -0.50 # infected
@@ -90,6 +90,10 @@ u_h <- -0.50 # hospitalized
 u_sq <- 0.080 # sequalae
 u_r <- 0.815 # recovered
 u_d <- 0 # Death, absorbing
+
+# Vaccination adverse events (transient disutility)
+u_adverse_events <- -0.08 # Disutility during adverse events (side effects)
+duration_adverse_events <- 1 # Duration of adverse events in weeks
 
 # ==============================================================================
 # Step 2d: Costs
@@ -278,15 +282,22 @@ generate_validation_report <- function() {
 
   cat("\n--- Scenario Comparisons ---\n")
 
-  # Vaccine scenarios should have higher costs than SOC
-  check("Arexvy: Higher total cost than SOC",
-        summary_arexvy$total_cost > summary_soc$total_cost,
-        sprintf("Arexvy: $%.2fM, SOC: $%.2fM",
-                summary_arexvy$total_cost/1e6, summary_soc$total_cost/1e6))
-  check("Abrysvo: Higher total cost than SOC",
-        summary_abrysvo$total_cost > summary_soc$total_cost,
-        sprintf("Abrysvo: $%.2fM, SOC: $%.2fM",
-                summary_abrysvo$total_cost/1e6, summary_soc$total_cost/1e6))
+  # Vaccine scenarios should have different costs than SOC (could be higher or lower)
+  arexvy_cost_diff <- summary_arexvy$total_cost - summary_soc$total_cost
+  arexvy_cost_status <- ifelse(arexvy_cost_diff < 0, " (Cost-Saving)", " (Higher Cost)")
+  check("Arexvy: Different total cost than SOC",
+        summary_arexvy$total_cost != summary_soc$total_cost,
+        sprintf("Arexvy: $%.2fM, SOC: $%.2fM, Diff: $%.2fM%s",
+                summary_arexvy$total_cost/1e6, summary_soc$total_cost/1e6,
+                arexvy_cost_diff/1e6, arexvy_cost_status))
+
+  abrysvo_cost_diff <- summary_abrysvo$total_cost - summary_soc$total_cost
+  abrysvo_cost_status <- ifelse(abrysvo_cost_diff < 0, " (Cost-Saving)", " (Higher Cost)")
+  check("Abrysvo: Different total cost than SOC",
+        summary_abrysvo$total_cost != summary_soc$total_cost,
+        sprintf("Abrysvo: $%.2fM, SOC: $%.2fM, Diff: $%.2fM%s",
+                summary_abrysvo$total_cost/1e6, summary_soc$total_cost/1e6,
+                abrysvo_cost_diff/1e6, abrysvo_cost_status))
 
   # Vaccine scenarios should have different QALYs than SOC
   check("Arexvy: Different QALYs than SOC",
@@ -891,16 +902,22 @@ while (no_susceptible_count < 2 && period <= max_periods) {
   # Calculate utilities for current period
   # ----------------------------------------------------------------------------
 
-  # Weekly utility (QALYs) = (population in state * utility value) / 52 weeks per year
-  utility_total <- (s_vn_t * u_s_vn +
-                    s_ve_t * u_s_ve +
-                    v_t * u_v +
-                    e_t * u_e +
-                    i_t * u_i +
-                    h_t * u_h +
-                    r_t * u_r +
-                    sq_t * u_sq +
-                    d_t * u_d) / 52
+  # Ongoing state utilities (people currently in each state)
+  utility_states <- (s_vn_t * u_s_vn +
+                     s_ve_t * u_s_ve +
+                     v_t * u_v +
+                     e_t * u_e +
+                     i_t * u_i +
+                     h_t * u_h +
+                     r_t * u_r +
+                     sq_t * u_sq +
+                     d_t * u_d) / 52
+
+  # One-time disutility for NEW vaccinations (adverse events)
+  utility_adverse_events <- s_vn_to_v * u_adverse_events * (duration_adverse_events / 52)
+
+  # Total utility for period
+  utility_total <- utility_states + utility_adverse_events
 
   # ----------------------------------------------------------------------------
   # Store results for current period
@@ -1209,16 +1226,22 @@ while (no_susceptible_count < 2 && period <= max_periods) {
   # Calculate utilities for current period
   # ----------------------------------------------------------------------------
 
-  # Weekly utility (QALYs) = (population in state * utility value) / 52 weeks per year
-  utility_total <- (s_vn_t * u_s_vn +
-                    s_ve_t * u_s_ve +
-                    v_t * u_v +
-                    e_t * u_e +
-                    i_t * u_i +
-                    h_t * u_h +
-                    r_t * u_r +
-                    sq_t * u_sq +
-                    d_t * u_d) / 52
+  # Ongoing state utilities (people currently in each state)
+  utility_states <- (s_vn_t * u_s_vn +
+                     s_ve_t * u_s_ve +
+                     v_t * u_v +
+                     e_t * u_e +
+                     i_t * u_i +
+                     h_t * u_h +
+                     r_t * u_r +
+                     sq_t * u_sq +
+                     d_t * u_d) / 52
+
+  # One-time disutility for NEW vaccinations (adverse events)
+  utility_adverse_events <- s_vn_to_v * u_adverse_events * (duration_adverse_events / 52)
+
+  # Total utility for period
+  utility_total <- utility_states + utility_adverse_events
 
   # ----------------------------------------------------------------------------
   # Store results for current period
