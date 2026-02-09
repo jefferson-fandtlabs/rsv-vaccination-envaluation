@@ -1335,7 +1335,7 @@ summary_abrysvo <- data.table(
   total_qaly = sum(results_abrysvo_dt$utility_total)
 )
 
-# Calculate ICER for both vaccines vs SOC to determine row ordering
+# Calculate ICER for both vaccines vs SOC (for validation and display)
 inc_cost_arexvy_vs_soc <- summary_arexvy$total_cost - summary_soc$total_cost
 inc_qaly_arexvy_vs_soc <- summary_arexvy$total_qaly - summary_soc$total_qaly
 icer_arexvy_vs_soc <- inc_cost_arexvy_vs_soc / inc_qaly_arexvy_vs_soc
@@ -1344,8 +1344,10 @@ inc_cost_abrysvo_vs_soc <- summary_abrysvo$total_cost - summary_soc$total_cost
 inc_qaly_abrysvo_vs_soc <- summary_abrysvo$total_qaly - summary_soc$total_qaly
 icer_abrysvo_vs_soc <- inc_cost_abrysvo_vs_soc / inc_qaly_abrysvo_vs_soc
 
-# Determine which vaccine has lower ICER vs SOC (goes in row 2)
-if (icer_arexvy_vs_soc < icer_abrysvo_vs_soc) {
+# Determine row ordering by TOTAL COST (lowest to highest)
+# Row 2: Vaccine with lower total cost
+# Row 3: Vaccine with higher total cost
+if (summary_arexvy$total_cost < summary_abrysvo$total_cost) {
   row2_summary <- summary_arexvy
   row2_inc_cost <- inc_cost_arexvy_vs_soc
   row2_inc_qaly <- inc_qaly_arexvy_vs_soc
@@ -1363,7 +1365,7 @@ if (icer_arexvy_vs_soc < icer_abrysvo_vs_soc) {
   row3_summary <- summary_arexvy
 }
 
-# Calculate incrementals for row 3 (compared to row 2, not SOC)
+# Calculate incrementals for row 3 (compared to row 2)
 row3_inc_cost <- row3_summary$total_cost - row2_summary$total_cost
 row3_inc_qaly <- row3_summary$total_qaly - row2_summary$total_qaly
 row3_icer <- row3_inc_cost / row3_inc_qaly
