@@ -132,7 +132,240 @@ o_los_h_icu <- # Days in hospital after being admitted to the ICU.
 # ==============================================================================
 
 # ==============================================================================
-# Step 3a: Initialize Results Storage
+# Step 3a: Define Validation Functions
+# ==============================================================================
+
+# Function to perform quality checks during simulation
+validate_period <- function(scenario_name, period, row_data, initial_pop, prev_deaths = 0) {
+
+  issues <- character(0)
+
+  # Extract populations (ensure scalar values)
+  s_vn <- row_data$s_vn_end[1]
+  s_ve <- row_data$s_ve_end[1]
+  v <- row_data$v_end[1]
+  e <- row_data$e_end[1]
+  i <- row_data$i_end[1]
+  h <- row_data$h_end[1]
+  r <- row_data$r_end[1]
+  sq <- row_data$sq_end[1]
+  d <- row_data$d_end[1]
+
+  # Check 1: Population Conservation
+  total_pop <- s_vn + s_ve + v + e + i + h + r + sq + d
+  pop_diff <- abs(total_pop - initial_pop)
+  if (pop_diff > 1) {  # Allow for small rounding errors
+    issues <- c(issues, sprintf("Population not conserved: %.2f (expected %.2f, diff %.2f)",
+                                total_pop, initial_pop, pop_diff))
+  }
+
+  # Check 2: Non-Negativity
+  if (s_vn < 0) issues <- c(issues, sprintf("S_VN negative: %.2f", s_vn))
+  if (s_ve < 0) issues <- c(issues, sprintf("S_VE negative: %.2f", s_ve))
+  if (v < 0) issues <- c(issues, sprintf("V negative: %.2f", v))
+  if (e < 0) issues <- c(issues, sprintf("E negative: %.2f", e))
+  if (i < 0) issues <- c(issues, sprintf("I negative: %.2f", i))
+  if (h < 0) issues <- c(issues, sprintf("H negative: %.2f", h))
+  if (r < 0) issues <- c(issues, sprintf("R negative: %.2f", r))
+  if (sq < 0) issues <- c(issues, sprintf("SQ negative: %.2f", sq))
+  if (d < 0) issues <- c(issues, sprintf("D negative: %.2f", d))
+
+  # Check 3: Monotonicity of Deaths (deaths should only increase)
+  if (period > 0 && d < prev_deaths) {
+    issues <- c(issues, sprintf("Deaths decreased: %.2f -> %.2f", prev_deaths, d))
+  }
+
+  # Return validation results
+  if (length(issues) > 0) {
+    warning(sprintf("[%s Period %d] Validation issues:\n  %s",
+                   scenario_name, period, paste(issues, collapse = "\n  ")))
+    return(FALSE)
+  }
+  return(TRUE)
+}
+
+# Function to generate comprehensive validation report
+generate_validation_report <- function() {
+
+  cat("\n")
+  cat("==============================================================================\n")
+  cat("                      VALIDATION REPORT\n")
+  cat("==============================================================================\n")
+  cat("\n")
+
+  validation_results <- list()
+  all_passed <- TRUE
+
+  # Helper function to check a condition and record result
+  check <- function(test_name, condition, details = "") {
+    passed <- condition
+    status <- if (passed) "PASS" else "FAIL"
+    cat(sprintf("%-50s [%s] %s\n", test_name, status, details))
+    if (!passed) all_passed <<- FALSE
+    validation_results[[test_name]] <<- list(passed = passed, details = details)
+    return(passed)
+  }
+
+  cat("--- Population Conservation ---\n")
+
+  # Check final population for each scenario
+  initial_pop <- p_60
+
+  final_soc <- results_soc_dt[nrow(results_soc_dt)]
+  total_soc <- final_soc$s_vn_end + final_soc$s_ve_end + final_soc$v_end +
+               final_soc$e_end + final_soc$i_end + final_soc$h_end +
+               final_soc$r_end + final_soc$sq_end + final_soc$d_end
+  check("SOC: Population conserved",
+        abs(total_soc - initial_pop) < 100,
+        sprintf("Total: %.0f, Expected: %.0f, Diff: %.0f", total_soc, initial_pop, total_soc - initial_pop))
+
+  final_arexvy <- results_arexvy_dt[nrow(results_arexvy_dt)]
+  total_arexvy <- final_arexvy$s_vn_end + final_arexvy$s_ve_end + final_arexvy$v_end +
+                  final_arexvy$e_end + final_arexvy$i_end + final_arexvy$h_end +
+                  final_arexvy$r_end + final_arexvy$sq_end + final_arexvy$d_end
+  check("Arexvy: Population conserved",
+        abs(total_arexvy - initial_pop) < 100,
+        sprintf("Total: %.0f, Expected: %.0f, Diff: %.0f", total_arexvy, initial_pop, total_arexvy - initial_pop))
+
+  final_abrysvo <- results_abrysvo_dt[nrow(results_abrysvo_dt)]
+  total_abrysvo <- final_abrysvo$s_vn_end + final_abrysvo$s_ve_end + final_abrysvo$v_end +
+                   final_abrysvo$e_end + final_abrysvo$i_end + final_abrysvo$h_end +
+                   final_abrysvo$r_end + final_abrysvo$sq_end + final_abrysvo$d_end
+  check("Abrysvo: Population conserved",
+        abs(total_abrysvo - initial_pop) < 100,
+        sprintf("Total: %.0f, Expected: %.0f, Diff: %.0f", total_abrysvo, initial_pop, total_abrysvo - initial_pop))
+
+  cat("\n--- Convergence ---\n")
+
+  # Check if simulations converged naturally
+  soc_periods <- nrow(results_soc_dt) - 1
+  arexvy_periods <- nrow(results_arexvy_dt) - 1
+  abrysvo_periods <- nrow(results_abrysvo_dt) - 1
+
+  check("SOC: Converged before max periods",
+        soc_periods < max_periods,
+        sprintf("%d periods", soc_periods))
+  check("Arexvy: Converged before max periods",
+        arexvy_periods < max_periods,
+        sprintf("%d periods", arexvy_periods))
+  check("Abrysvo: Converged before max periods",
+        abrysvo_periods < max_periods,
+        sprintf("%d periods", abrysvo_periods))
+
+  cat("\n--- Monotonicity ---\n")
+
+  # Check that costs are non-decreasing (cumulative)
+  check("SOC: Costs are non-negative",
+        all(results_soc_dt$cost_total >= 0),
+        "")
+  check("Arexvy: Costs are non-negative",
+        all(results_arexvy_dt$cost_total >= 0),
+        "")
+  check("Abrysvo: Costs are non-negative",
+        all(results_abrysvo_dt$cost_total >= 0),
+        "")
+
+  # Check that deaths only increase
+  check("SOC: Deaths monotonically increasing",
+        all(diff(results_soc_dt$d_end) >= 0),
+        "")
+  check("Arexvy: Deaths monotonically increasing",
+        all(diff(results_arexvy_dt$d_end) >= 0),
+        "")
+  check("Abrysvo: Deaths monotonically increasing",
+        all(diff(results_abrysvo_dt$d_end) >= 0),
+        "")
+
+  cat("\n--- Scenario Comparisons ---\n")
+
+  # Vaccine scenarios should have higher costs than SOC
+  check("Arexvy: Higher total cost than SOC",
+        summary_arexvy$total_cost > summary_soc$total_cost,
+        sprintf("Arexvy: $%.2fM, SOC: $%.2fM",
+                summary_arexvy$total_cost/1e6, summary_soc$total_cost/1e6))
+  check("Abrysvo: Higher total cost than SOC",
+        summary_abrysvo$total_cost > summary_soc$total_cost,
+        sprintf("Abrysvo: $%.2fM, SOC: $%.2fM",
+                summary_abrysvo$total_cost/1e6, summary_soc$total_cost/1e6))
+
+  # Vaccine scenarios should have different QALYs than SOC
+  check("Arexvy: Different QALYs than SOC",
+        summary_arexvy$total_qaly != summary_soc$total_qaly,
+        sprintf("Diff: %.2fM QALYs", (summary_arexvy$total_qaly - summary_soc$total_qaly)/1e6))
+  check("Abrysvo: Different QALYs than SOC",
+        summary_abrysvo$total_qaly != summary_soc$total_qaly,
+        sprintf("Diff: %.2fM QALYs", (summary_abrysvo$total_qaly - summary_soc$total_qaly)/1e6))
+
+  cat("\n--- ICER Validity ---\n")
+
+  # ICERs should be finite
+  check("Arexvy vs SOC: ICER is finite",
+        is.finite(icer_arexvy_vs_soc),
+        sprintf("ICER: $%.2f/QALY", icer_arexvy_vs_soc))
+  check("Abrysvo vs SOC: ICER is finite",
+        is.finite(icer_abrysvo_vs_soc),
+        sprintf("ICER: $%.2f/QALY", icer_abrysvo_vs_soc))
+
+  cat("\n--- Internal Consistency ---\n")
+
+  # Period 0 should have start = end for all compartments
+  check("SOC: Period 0 start equals end",
+        all(results_soc_dt[1, .(s_vn_start, s_ve_start, v_start, e_start, i_start,
+                                h_start, r_start, sq_start, d_start)] ==
+            results_soc_dt[1, .(s_vn_end, s_ve_end, v_end, e_end, i_end,
+                                h_end, r_end, sq_end, d_end)]),
+        "")
+
+  # SOC should have no vaccination
+  check("SOC: No vaccination occurred",
+        all(results_soc_dt$v_start == 0) && all(results_soc_dt$v_end == 0),
+        "")
+
+  cat("\n--- Extreme Value Checks ---\n")
+
+  # Check for extreme populations (none should exceed initial population)
+  max_pop_any_compartment <- max(
+    max(results_soc_dt$s_vn_end, results_soc_dt$s_ve_end, results_soc_dt$v_end,
+        results_soc_dt$e_end, results_soc_dt$i_end, results_soc_dt$h_end,
+        results_soc_dt$r_end, results_soc_dt$sq_end),
+    max(results_arexvy_dt$s_vn_end, results_arexvy_dt$s_ve_end, results_arexvy_dt$v_end,
+        results_arexvy_dt$e_end, results_arexvy_dt$i_end, results_arexvy_dt$h_end,
+        results_arexvy_dt$r_end, results_arexvy_dt$sq_end),
+    max(results_abrysvo_dt$s_vn_end, results_abrysvo_dt$s_ve_end, results_abrysvo_dt$v_end,
+        results_abrysvo_dt$e_end, results_abrysvo_dt$i_end, results_abrysvo_dt$h_end,
+        results_abrysvo_dt$r_end, results_abrysvo_dt$sq_end)
+  )
+  check("No compartment exceeds initial population",
+        max_pop_any_compartment <= initial_pop,
+        sprintf("Max: %.0f, Initial: %.0f", max_pop_any_compartment, initial_pop))
+
+  # Check for reasonable total costs
+  check("SOC: Total cost is reasonable",
+        summary_soc$total_cost > 0 && summary_soc$total_cost < 1e12,
+        sprintf("$%.2fM", summary_soc$total_cost/1e6))
+  check("Arexvy: Total cost is reasonable",
+        summary_arexvy$total_cost > 0 && summary_arexvy$total_cost < 1e12,
+        sprintf("$%.2fM", summary_arexvy$total_cost/1e6))
+  check("Abrysvo: Total cost is reasonable",
+        summary_abrysvo$total_cost > 0 && summary_abrysvo$total_cost < 1e12,
+        sprintf("$%.2fM", summary_abrysvo$total_cost/1e6))
+
+  cat("\n")
+  cat("==============================================================================\n")
+  if (all_passed) {
+    cat("                     ALL VALIDATION CHECKS PASSED\n")
+  } else {
+    cat("                   SOME VALIDATION CHECKS FAILED\n")
+    cat("                   Please review issues above\n")
+  }
+  cat("==============================================================================\n")
+  cat("\n")
+
+  return(validation_results)
+}
+
+# ==============================================================================
+# Step 3b: Initialize Results Storage
 # ==============================================================================
 
 # Initialize empty data.table to store period-by-period results
@@ -381,6 +614,13 @@ while (no_susceptible_count < 2 && period <= max_periods) {
       utility_total = utility_total
     )
   ), use.names = TRUE)
+
+  # ----------------------------------------------------------------------------
+  # Real-time validation check
+  # ----------------------------------------------------------------------------
+
+  validate_period("SOC", period, results_soc_dt[period + 1], p_60,
+                  if (period > 0) results_soc_dt[period]$d_end else 0)
 
   # ----------------------------------------------------------------------------
   # Check stopping conditions
@@ -694,6 +934,13 @@ while (no_susceptible_count < 2 && period <= max_periods) {
   ), use.names = TRUE)
 
   # ----------------------------------------------------------------------------
+  # Real-time validation check
+  # ----------------------------------------------------------------------------
+
+  validate_period("Arexvy", period, results_arexvy_dt[period + 1], p_60,
+                  if (period > 0) results_arexvy_dt[period]$d_end else 0)
+
+  # ----------------------------------------------------------------------------
   # Check stopping conditions
   # ----------------------------------------------------------------------------
 
@@ -1005,6 +1252,13 @@ while (no_susceptible_count < 2 && period <= max_periods) {
   ), use.names = TRUE)
 
   # ----------------------------------------------------------------------------
+  # Real-time validation check
+  # ----------------------------------------------------------------------------
+
+  validate_period("Abrysvo", period, results_abrysvo_dt[period + 1], p_60,
+                  if (period > 0) results_abrysvo_dt[period]$d_end else 0)
+
+  # ----------------------------------------------------------------------------
   # Check stopping conditions
   # ----------------------------------------------------------------------------
 
@@ -1160,4 +1414,11 @@ cat("Note: ICER = Incremental Cost-Effectiveness Ratio (cost per QALY gained)\n"
 cat("      Row 2 compared to Standard of Care\n")
 cat("      Row 3 compared to Row 2\n")
 cat("\n")
+
+# ==============================================================================
+# Step 7: Post-Simulation Validation Report
+# ==============================================================================
+
+# Run comprehensive validation report
+validation_results <- generate_validation_report()
 
