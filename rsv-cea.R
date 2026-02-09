@@ -1104,6 +1104,7 @@ format_icer <- function(icer, dominated) {
 }
 
 # Build final results table with proper formatting
+# Convert to millions for readability
 results_summary <- data.table(
   Scenario = c(
     summary_soc$scenario,
@@ -1115,27 +1116,27 @@ results_summary <- data.table(
     row2_summary$periods,
     row3_summary$periods
   ),
-  Total_Cost = c(
-    format_currency(summary_soc$total_cost),
-    format_currency(row2_summary$total_cost),
-    format_currency(row3_summary$total_cost)
+  `Total Cost (Millions)` = c(
+    format_currency(summary_soc$total_cost / 1e6),
+    format_currency(row2_summary$total_cost / 1e6),
+    format_currency(row3_summary$total_cost / 1e6)
   ),
-  Total_QALY = c(
-    format_number(summary_soc$total_qaly),
-    format_number(row2_summary$total_qaly),
-    format_number(row3_summary$total_qaly)
+  `Total QALY (Millions)` = c(
+    format_number(summary_soc$total_qaly / 1e6),
+    format_number(row2_summary$total_qaly / 1e6),
+    format_number(row3_summary$total_qaly / 1e6)
   ),
-  Incremental_Cost = c(
+  `Incremental Cost (Millions)` = c(
     "-",
-    format_currency(row2_inc_cost),
-    format_currency(row3_inc_cost)
+    format_currency(row2_inc_cost / 1e6),
+    format_currency(row3_inc_cost / 1e6)
   ),
-  Incremental_QALY = c(
+  `Incremental QALY (Millions)` = c(
     "-",
-    format_number(row2_inc_qaly),
-    format_number(row3_inc_qaly)
+    format_number(row2_inc_qaly / 1e6),
+    format_number(row3_inc_qaly / 1e6)
   ),
-  ICER = c(
+  `ICER ($/QALY)` = c(
     "-",
     format_icer(row2_icer, row2_dominated),
     format_icer(row3_icer, row3_dominated)
