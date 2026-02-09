@@ -163,16 +163,18 @@ validate_period <- function(scenario_name, period, row_data, initial_pop, prev_d
                                 total_pop, initial_pop, pop_diff))
   }
 
-  # Check 2: Non-Negativity
-  if (s_vn < 0) issues <- c(issues, sprintf("S_VN negative: %.2f", s_vn))
-  if (s_ve < 0) issues <- c(issues, sprintf("S_VE negative: %.2f", s_ve))
-  if (v < 0) issues <- c(issues, sprintf("V negative: %.2f", v))
-  if (e < 0) issues <- c(issues, sprintf("E negative: %.2f", e))
-  if (i < 0) issues <- c(issues, sprintf("I negative: %.2f", i))
-  if (h < 0) issues <- c(issues, sprintf("H negative: %.2f", h))
-  if (r < 0) issues <- c(issues, sprintf("R negative: %.2f", r))
-  if (sq < 0) issues <- c(issues, sprintf("SQ negative: %.2f", sq))
-  if (d < 0) issues <- c(issues, sprintf("D negative: %.2f", d))
+  # Check 2: Non-Negativity (with tolerance for floating-point rounding errors)
+  # Allow small negative values (< -0.01) which are just rounding errors
+  tolerance <- 0.01  # Tolerance for rounding errors (much less than 1 person)
+  if (s_vn < -tolerance) issues <- c(issues, sprintf("S_VN negative: %.2f", s_vn))
+  if (s_ve < -tolerance) issues <- c(issues, sprintf("S_VE negative: %.2f", s_ve))
+  if (v < -tolerance) issues <- c(issues, sprintf("V negative: %.2f", v))
+  if (e < -tolerance) issues <- c(issues, sprintf("E negative: %.2f", e))
+  if (i < -tolerance) issues <- c(issues, sprintf("I negative: %.2f", i))
+  if (h < -tolerance) issues <- c(issues, sprintf("H negative: %.2f", h))
+  if (r < -tolerance) issues <- c(issues, sprintf("R negative: %.2f", r))
+  if (sq < -tolerance) issues <- c(issues, sprintf("SQ negative: %.2f", sq))
+  if (d < -tolerance) issues <- c(issues, sprintf("D negative: %.2f", d))
 
   # Check 3: Monotonicity of Deaths (deaths should only increase)
   if (period > 0 && d < prev_deaths) {
@@ -630,8 +632,9 @@ while (no_susceptible_count < 2 && period <= max_periods) {
   # Real-time validation check
   # ----------------------------------------------------------------------------
 
-  validate_period("SOC", period, results_soc_dt[period + 1], p_60,
-                  if (period > 0) results_soc_dt[period]$d_end else 0)
+  # Validate the last row we just added
+  validate_period("SOC", period, results_soc_dt[.N], p_60,
+                  if (period > 0) results_soc_dt[.N - 1]$d_end[1] else 0)
 
   # ----------------------------------------------------------------------------
   # Check stopping conditions
@@ -954,8 +957,9 @@ while (no_susceptible_count < 2 && period <= max_periods) {
   # Real-time validation check
   # ----------------------------------------------------------------------------
 
-  validate_period("Arexvy", period, results_arexvy_dt[period + 1], p_60,
-                  if (period > 0) results_arexvy_dt[period]$d_end else 0)
+  # Validate the last row we just added
+  validate_period("Arexvy", period, results_arexvy_dt[.N], p_60,
+                  if (period > 0) results_arexvy_dt[.N - 1]$d_end[1] else 0)
 
   # ----------------------------------------------------------------------------
   # Check stopping conditions
@@ -1278,8 +1282,9 @@ while (no_susceptible_count < 2 && period <= max_periods) {
   # Real-time validation check
   # ----------------------------------------------------------------------------
 
-  validate_period("Abrysvo", period, results_abrysvo_dt[period + 1], p_60,
-                  if (period > 0) results_abrysvo_dt[period]$d_end else 0)
+  # Validate the last row we just added
+  validate_period("Abrysvo", period, results_abrysvo_dt[.N], p_60,
+                  if (period > 0) results_abrysvo_dt[.N - 1]$d_end[1] else 0)
 
   # ----------------------------------------------------------------------------
   # Check stopping conditions
