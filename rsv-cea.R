@@ -41,8 +41,8 @@ h_0_p <- 0.00243 # Percentage of p_60 that represents the hospitalized populatio
 # ==============================================================================
 
 # Vaccine Breakthrough Rate (Kappa)
-kappa_arexvy <- .0039 # Vaccine Breakthrough Rate for Arexvy.
-kappa_abrysvo <- .00395 # Vaccine Breakthrough Rate for Abrysvo
+kappa_arexvy <- .211 # Vaccine Breakthrough Rate for Arexvy. Range from 20.2% to 22.0%
+kappa_abrysvo <- .222 # Vaccine Breakthrough Rate for Abrysvo. Range from 21.1% to 23.3%
 
 # RSV Vaccination Rate in US
 psi <- 0.42 # Vaccination rate for RSV among adults in the use 60+
@@ -85,14 +85,16 @@ u_s_vn <- 0.815 # Susceptible, vaccine naive
 u_v <- 0.815 # Vaccinated (healthy, protected) - same as susceptible
 u_s_ve <- 0.815 # Susceptible, vaccine experienced
 u_e <- 0.815 # Exposed
-u_i <- -0.50 # infected
-u_h <- -0.50 # hospitalized
+u_i <- 0.815 # Infected (baseline utility for ongoing state)
+u_h <- 0.815 # Hospitalized (baseline utility for ongoing state)
 u_sq <- 0.080 # sequalae
 u_r <- 0.815 # recovered
 u_d <- 0 # Death, absorbing
 
-# Vaccination adverse events (transient disutility)
+# Transient disutilities (applied only when entering acute states)
 u_adverse_events <- -0.08 # Disutility during adverse events (side effects)
+u_disutility_infection <- -0.010 # Disutility during acute infection phase
+u_disutility_hospitalization <- -0.017 # Disutility during acute hospitalization phase
 duration_adverse_events <- 1 # Duration of adverse events in weeks
 
 # ==============================================================================
@@ -587,15 +589,23 @@ while (no_susceptible_count < 2 && period <= max_periods) {
   # Calculate utilities for current period
   # ----------------------------------------------------------------------------
 
-  # Weekly utility (QALYs) = (population in state * utility value) / 52 weeks per year
+  # Ongoing state utilities (people currently in each state)
   # Note: V and S_VE compartments are 0 for standard of care
-  utility_total <- (s_vn_t * u_s_vn +
-                    e_t * u_e +
-                    i_t * u_i +
-                    h_t * u_h +
-                    r_t * u_r +
-                    sq_t * u_sq +
-                    d_t * u_d) / 52
+  utility_states <- (s_vn_t * u_s_vn +
+                     e_t * u_e +
+                     i_t * u_i +
+                     h_t * u_h +
+                     r_t * u_r +
+                     sq_t * u_sq +
+                     d_t * u_d) / 52
+
+  # One-time disutilities for NEW transitions into acute states
+  # Disutilities are already in weekly timescales, scale by fraction of week
+  utility_infection_entry <- e_to_i * u_disutility_infection * (o_infected / 7)
+  utility_hospitalization_entry <- i_to_h * u_disutility_hospitalization * (o_los_h / 7)
+
+  # Total utility for period
+  utility_total <- utility_states + utility_infection_entry + utility_hospitalization_entry
 
   # ----------------------------------------------------------------------------
   # Store results for current period
@@ -916,11 +926,14 @@ while (no_susceptible_count < 2 && period <= max_periods) {
                      sq_t * u_sq +
                      d_t * u_d) / 52
 
-  # One-time disutility for NEW vaccinations (adverse events)
-  utility_adverse_events <- s_vn_to_v * u_adverse_events * (duration_adverse_events / 52)
+  # One-time disutilities for NEW transitions into acute states
+  # Disutilities are already in weekly timescales, scale by fraction of week (days/7)
+  utility_adverse_events <- s_vn_to_v * u_adverse_events * duration_adverse_events
+  utility_infection_entry <- e_to_i * u_disutility_infection * (o_infected / 7)
+  utility_hospitalization_entry <- i_to_h * u_disutility_hospitalization * (o_los_h / 7)
 
   # Total utility for period
-  utility_total <- utility_states + utility_adverse_events
+  utility_total <- utility_states + utility_adverse_events + utility_infection_entry + utility_hospitalization_entry
 
   # ----------------------------------------------------------------------------
   # Store results for current period
@@ -1242,11 +1255,14 @@ while (no_susceptible_count < 2 && period <= max_periods) {
                      sq_t * u_sq +
                      d_t * u_d) / 52
 
-  # One-time disutility for NEW vaccinations (adverse events)
-  utility_adverse_events <- s_vn_to_v * u_adverse_events * (duration_adverse_events / 52)
+  # One-time disutilities for NEW transitions into acute states
+  # Disutilities are already in weekly timescales, scale by fraction of week (days/7)
+  utility_adverse_events <- s_vn_to_v * u_adverse_events * duration_adverse_events
+  utility_infection_entry <- e_to_i * u_disutility_infection * (o_infected / 7)
+  utility_hospitalization_entry <- i_to_h * u_disutility_hospitalization * (o_los_h / 7)
 
   # Total utility for period
-  utility_total <- utility_states + utility_adverse_events
+  utility_total <- utility_states + utility_adverse_events + utility_infection_entry + utility_hospitalization_entry
 
   # ----------------------------------------------------------------------------
   # Store results for current period
