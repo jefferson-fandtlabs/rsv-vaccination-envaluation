@@ -23,18 +23,18 @@ library(writexl)    # Excel file export
 # Total U.S. Population Age 60+
 p_60 <- 82973748
 
-# Suceptible
-s_vn_0_p <- .98137 # Percentage of p_60 that represents the initial susceptible, vaccine-naive, no vaccine scenario at time 0
-s_vn_0_v_p <- .56137 # Percentage of p_60 that represents the initial susceptible, vaccine-naive, vaccine scenario at time 0
-
 # Vaccinated
-v_0_p <- .42 # Percentage of p_60 that represents the vaccinated population for vaccine scenario at time 0
+v_0_p <- .162 # Percentage of p_60 that represents the vaccinated population for vaccine scenario at time 0
 
 # Infectious
 i_0_p <- .0162 # Percentage of p_60 that represents the infectious population at time 0
 
 # Hospitalized
 h_0_p <- 0.00243 # Percentage of p_60 that represents the hospitalized population at time 0
+
+# Suceptible
+s_vn_0_p <- (1 - i_0_p - h_0_p) # Percentage of p_60 that represents the initial susceptible, vaccine-naive, no vaccine scenario at time 0
+s_vn_0_v_p <- (1 - i_0_p - h_0_p - v_0_p) # Percentage of p_60 that represents the initial susceptible, vaccine-naive, vaccine scenario at time 0
 
 # ==============================================================================
 # Step 2b: Transition Probabilities
@@ -45,7 +45,7 @@ kappa_arexvy <- .211 # Vaccine Breakthrough Rate for Arexvy. Range from 20.2% to
 kappa_abrysvo <- .222 # Vaccine Breakthrough Rate for Abrysvo. Range from 21.1% to 23.3%
 
 # RSV Vaccination Rate in US
-psi <- 0.42 # Vaccination rate for RSV among adults in the use 60+
+psi <- v_0_p # Vaccination rate for RSV among adults in the use 60+
 
 # Waning immunity
 gamma_v <- 0.015 # Waning vaccine confered immunity
