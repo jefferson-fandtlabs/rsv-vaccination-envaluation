@@ -25,10 +25,10 @@ p_60 <- 82973748
 
 # Suceptible
 s_vn_0_p <- .98137 # Percentage of p_60 that represents the initial susceptible, vaccine-naive, no vaccine scenario at time 0
-s_vn_0_v_p <- .81737 # Percentage of p_60 that represents the initial susceptible, vaccine-naive, vaccine scenario at time 0
+s_vn_0_v_p <- .56137 # Percentage of p_60 that represents the initial susceptible, vaccine-naive, vaccine scenario at time 0
 
 # Vaccinated
-v_0_p <- .164 # Percentage of p_60 that represents the vaccinated population for vaccine scenario at time 0
+v_0_p <- .42 # Percentage of p_60 that represents the vaccinated population for vaccine scenario at time 0
 
 # Infectious
 i_0_p <- .0162 # Percentage of p_60 that represents the infectious population at time 0
@@ -132,6 +132,13 @@ o_los_h <- 6.2 # Days of hospitalization without ICU
 o_los_icu <- 4.5 # Days in ICU
 o_los_h_pre_icu <- # Days in hospital prior to ICU admission
 o_los_h_icu <- # Days in hospital after being admitted to the ICU.
+
+  # ==============================================================================
+# Step 2f: Discount
+# ==============================================================================
+
+  p_discount_yr <- 0.03
+  p_discount_wk <- p_discount_yr / 52  # Weekly discount rate derived from annual rate
 
 # ==============================================================================
 # Step 3: Model - SOC
@@ -607,6 +614,11 @@ while (no_susceptible_count < 2 && period <= max_periods) {
   # Total utility for period
   utility_total <- utility_states + utility_infection_entry + utility_hospitalization_entry
 
+  # Apply discounting to costs and utilities
+  discount_factor <- 1 / (1 + p_discount_wk)^period
+  cost_total <- cost_total * discount_factor
+  utility_total <- utility_total * discount_factor
+
   # ----------------------------------------------------------------------------
   # Store results for current period
   # ----------------------------------------------------------------------------
@@ -934,6 +946,11 @@ while (no_susceptible_count < 2 && period <= max_periods) {
 
   # Total utility for period
   utility_total <- utility_states + utility_adverse_events + utility_infection_entry + utility_hospitalization_entry
+
+  # Apply discounting to costs and utilities
+  discount_factor <- 1 / (1 + p_discount_wk)^period
+  cost_total <- cost_total * discount_factor
+  utility_total <- utility_total * discount_factor
 
   # ----------------------------------------------------------------------------
   # Store results for current period
@@ -1263,6 +1280,11 @@ while (no_susceptible_count < 2 && period <= max_periods) {
 
   # Total utility for period
   utility_total <- utility_states + utility_adverse_events + utility_infection_entry + utility_hospitalization_entry
+
+  # Apply discounting to costs and utilities
+  discount_factor <- 1 / (1 + p_discount_wk)^period
+  cost_total <- cost_total * discount_factor
+  utility_total <- utility_total * discount_factor
 
   # ----------------------------------------------------------------------------
   # Store results for current period
