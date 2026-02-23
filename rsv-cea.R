@@ -794,25 +794,26 @@ while (no_susceptible_count < 2 && period <= max_periods) {
   # For competing risks, calculate total exit rate and proportions to each destination
   # ----------------------------------------------------------------------------
 
-  # S_VN transitions: vaccination (psi), infection (foi), or death (mu)
-  total_exit_s_vn <- psi + foi + mu
+  # S_VN transitions: vaccination (psi), infection (foi), breakthrough infection (kappa_arexvy), or death (mu)
+  total_exit_s_vn <- psi + foi + kappa_arexvy + mu
   if (total_exit_s_vn > 0) {
     n_exit_s_vn <- min(s_vn_t, s_vn_t * total_exit_s_vn)
     s_vn_to_v <- n_exit_s_vn * (psi / total_exit_s_vn)
+    s_vn_to_s_ve <- n_exit_s_vn * (kappa_arexvy / total_exit_v)
     s_vn_to_e <- n_exit_s_vn * (foi / total_exit_s_vn)
     s_vn_to_d <- n_exit_s_vn * (mu / total_exit_s_vn)
   } else {
     s_vn_to_v <- 0
     s_vn_to_e <- 0
     s_vn_to_d <- 0
+    s_vn_to_s_ve <- 0
   }
 
-  # V transitions: waning immunity (gamma_v), breakthrough infection (kappa_arexvy), or death (mu)
-  total_exit_v <- gamma_v + kappa_arexvy + mu
+  # V transitions: waning immunity (gamma_v), or death (mu)
+  total_exit_v <- gamma_v + mu
   if (total_exit_v > 0) {
     n_exit_v <- min(v_t, v_t * total_exit_v)
     v_to_s_ve <- n_exit_v * (gamma_v / total_exit_v)
-    v_to_e <- n_exit_v * (kappa_arexvy / total_exit_v)
     v_to_d <- n_exit_v * (mu / total_exit_v)
   } else {
     v_to_s_ve <- 0
@@ -895,7 +896,7 @@ while (no_susceptible_count < 2 && period <= max_periods) {
   # ----------------------------------------------------------------------------
 
   s_vn_end <- s_vn_t - s_vn_to_v - s_vn_to_e - s_vn_to_d + r_to_s_vn
-  s_ve_end <- s_ve_t + v_to_s_ve - s_ve_to_e - s_ve_to_d
+  s_ve_end <- s_ve_t + s_vn_to_s_ve + v_to_s_ve - s_ve_to_e - s_ve_to_d
   v_end <- v_t + s_vn_to_v - v_to_s_ve - v_to_e - v_to_d
   e_end <- e_t + s_vn_to_e + s_ve_to_e + v_to_e - e_to_i - e_to_d
   i_end <- i_t + e_to_i - i_to_h - i_to_r - i_to_d
@@ -1129,10 +1130,11 @@ while (no_susceptible_count < 2 && period <= max_periods) {
   # ----------------------------------------------------------------------------
 
   # S_VN transitions: vaccination (psi), infection (foi), or death (mu)
-  total_exit_s_vn <- psi + foi + mu
+  total_exit_s_vn <- psi + foi + mu + kappa_abrysvo
   if (total_exit_s_vn > 0) {
     n_exit_s_vn <- min(s_vn_t, s_vn_t * total_exit_s_vn)
     s_vn_to_v <- n_exit_s_vn * (psi / total_exit_s_vn)
+    s_vn_to_s_ve <- n_exit_v * (kappa_arexvy / total_exit_v)
     s_vn_to_e <- n_exit_s_vn * (foi / total_exit_s_vn)
     s_vn_to_d <- n_exit_s_vn * (mu / total_exit_s_vn)
   } else {
@@ -1142,11 +1144,10 @@ while (no_susceptible_count < 2 && period <= max_periods) {
   }
 
   # V transitions: waning immunity (gamma_v), breakthrough infection (kappa_abrysvo), or death (mu)
-  total_exit_v <- gamma_v + kappa_abrysvo + mu
+  total_exit_v <- gamma_v + mu
   if (total_exit_v > 0) {
     n_exit_v <- min(v_t, v_t * total_exit_v)
     v_to_s_ve <- n_exit_v * (gamma_v / total_exit_v)
-    v_to_e <- n_exit_v * (kappa_abrysvo / total_exit_v)
     v_to_d <- n_exit_v * (mu / total_exit_v)
   } else {
     v_to_s_ve <- 0
@@ -1229,7 +1230,7 @@ while (no_susceptible_count < 2 && period <= max_periods) {
   # ----------------------------------------------------------------------------
 
   s_vn_end <- s_vn_t - s_vn_to_v - s_vn_to_e - s_vn_to_d + r_to_s_vn
-  s_ve_end <- s_ve_t + v_to_s_ve - s_ve_to_e - s_ve_to_d
+  s_ve_end <- s_ve_t + s_vn_to_s_ve + v_to_s_ve - s_ve_to_e - s_ve_to_d
   v_end <- v_t + s_vn_to_v - v_to_s_ve - v_to_e - v_to_d
   e_end <- e_t + s_vn_to_e + s_ve_to_e + v_to_e - e_to_i - e_to_d
   i_end <- i_t + e_to_i - i_to_h - i_to_r - i_to_d
