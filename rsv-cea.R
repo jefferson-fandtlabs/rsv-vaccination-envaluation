@@ -11,26 +11,30 @@
 
 library(data.table) # Fast data manipulation and storage for simulation results
 library(writexl)    # Excel file export
+library(ggplot2)    # Tornado diagram visualisation
 
 # ==============================================================================
 # Step 2: Define variables
 # ==============================================================================
+
+# Import variable definitions
+input_parameters <- read.csv('rsv_input_parameters.csv')
 
 # ==============================================================================
 # Step 2a: Initial Population Distribution
 # ==============================================================================
 
 # Total U.S. Population Age 60+
-p_60 <- 82973748
+p_60 <- input_parameters$value[input_parameters$parameter == "p_60"]
 
 # Vaccinated
-v_0_p <- .162 # Percentage of p_60 that represents the vaccinated population for vaccine scenario at time 0
+v_0_p <- input_parameters$value[input_parameters$parameter == "v_0_p"] # Percentage of p_60 that represents the vaccinated population for vaccine scenario at time 0
 
 # Infectious
-i_0_p <- .0162 # Percentage of p_60 that represents the infectious population at time 0
+i_0_p <- input_parameters$value[input_parameters$parameter == "i_0_p"] # Percentage of p_60 that represents the infectious population at time 0
 
 # Hospitalized
-h_0_p <- 0.00243 # Percentage of p_60 that represents the hospitalized population at time 0
+h_0_p <- input_parameters$value[input_parameters$parameter == "h_0_p"] # Percentage of p_60 that represents the hospitalized population at time 0
 
 # Suceptible
 s_vn_0_p <- (1 - i_0_p - h_0_p) # Percentage of p_60 that represents the initial susceptible, vaccine-naive, no vaccine scenario at time 0
@@ -41,92 +45,92 @@ s_vn_0_v_p <- (1 - i_0_p - h_0_p - v_0_p) # Percentage of p_60 that represents t
 # ==============================================================================
 
 # Vaccine Breakthrough Rate (Kappa)
-kappa_arexvy <- .211 # Vaccine Breakthrough Rate for Arexvy. Range from 20.2% to 22.0%
-kappa_abrysvo <- .222 # Vaccine Breakthrough Rate for Abrysvo. Range from 21.1% to 23.3%
+kappa_arexvy <- input_parameters$value[input_parameters$parameter == "kappa_arexvy"] # Vaccine Breakthrough Rate for Arexvy. Range from 20.2% to 22.0%
+kappa_abrysvo <- input_parameters$value[input_parameters$parameter == "kappa_abrysvo"] # Vaccine Breakthrough Rate for Abrysvo. Range from 21.1% to 23.3%
 
 # RSV Vaccination Rate in US
 psi <- v_0_p / 52 # Weekly vaccination rate derived from annual rate of 16.2%
 
 # Waning immunity
-gamma_v <- 0.015 # Waning vaccine confered immunity
-gamma_r <- 0.015 # Waning natual immunity
+gamma_v <- input_parameters$value[input_parameters$parameter == "gamma_v"] # Waning vaccine confered immunity
+gamma_r <- input_parameters$value[input_parameters$parameter == "gamma_r"] # Waning natual immunity
 
 # Conversion rate
-sigma <- 1 # Rate of conversion from exposed to infected
+sigma <- input_parameters$value[input_parameters$parameter == "sigma"] # Rate of conversion from exposed to infected
 
 # Hospitalization rate
-phi <- 0.0015 # Rate of hospitalization
+phi <- input_parameters$value[input_parameters$parameter == "phi"] # Rate of hospitalization
 
 # Recovery rate
-tau_2 <- 0.904 # Recovery Rate from hospitalization
-tau_3 <- 1     # Recovery from sequelae
+tau_2 <- input_parameters$value[input_parameters$parameter == "tau_2"] # Recovery Rate from hospitalization
+tau_3 <- input_parameters$value[input_parameters$parameter == "tau_3"] # Recovery from sequelae
 
 # Chronic State
-rho <- 0.18 # Rate of transition to chronic state
+rho <- input_parameters$value[input_parameters$parameter == "rho"] # Rate of transition to chronic state
 
 # Mortality
-mu <- 0.00139 # Age adjusted weekly mortality
+mu <- input_parameters$value[input_parameters$parameter == "mu"] # Age adjusted weekly mortality
 
 # RSV Mortality
-delta_m <- 0 # Mortality rate from mild RSV
-delta_s <- 0.0713 # Mortality rate from severe RSV
-delta_sq <- 0 # Mortality rate from RSV sequelae
+delta_m <- input_parameters$value[input_parameters$parameter == "delta_m"] # Mortality rate from mild RSV
+delta_s <- input_parameters$value[input_parameters$parameter == "delta_s"] # Mortality rate from severe RSV
+delta_sq <- input_parameters$value[input_parameters$parameter == "delta_sq"] # Mortality rate from RSV sequelae
 
 # ==============================================================================
 # Step 2c: Health Utility For Each State
 # ==============================================================================
 
 # Each is represented as a unit of utility that must then be multiplied by the time in that state.
-u_s_vn <- 0.815 # Susceptible, vaccine naive
-u_v <- 0.815 # Vaccinated (healthy, protected) - same as susceptible
-u_s_ve <- 0.815 # Susceptible, vaccine experienced
-u_e <- 0.815 # Exposed
-u_i <- 0.815 # Infected (baseline utility for ongoing state)
-u_h <- 0.815 # Hospitalized (baseline utility for ongoing state)
-u_sq <- 0.080 # sequalae
-u_r <- 0.815 # recovered
-u_d <- 0 # Death, absorbing
+u_s_vn <- input_parameters$value[input_parameters$parameter == "u_s_vn"] # Susceptible, vaccine naive
+u_v <- input_parameters$value[input_parameters$parameter == "u_v"] # Vaccinated (healthy, protected) - same as susceptible
+u_s_ve <- input_parameters$value[input_parameters$parameter == "u_s_ve"] # Susceptible, vaccine experienced
+u_e <- input_parameters$value[input_parameters$parameter == "u_e"] # Exposed
+u_i <- input_parameters$value[input_parameters$parameter == "u_i"] # Infected (baseline utility for ongoing state)
+u_h <- input_parameters$value[input_parameters$parameter == "u_h"] # Hospitalized (baseline utility for ongoing state)
+u_sq <- input_parameters$value[input_parameters$parameter == "u_sq"] # sequalae
+u_r <- input_parameters$value[input_parameters$parameter == "u_r"] # recovered
+u_d <- input_parameters$value[input_parameters$parameter == "u_d"] # Death, absorbing
 
 # Transient disutilities (applied only when entering acute states)
-u_adverse_events <- -0.08 # Annual utility weight decrement during adverse events (EQ-5D scale)
-p_adverse_events <- 0.20  # Proportion of vaccinated people who experience an adverse event
-u_disutility_infection <- -0.010 # Weekly QALY disutility during acute infection phase
-u_disutility_hospitalization <- -0.017 # Weekly QALY disutility during acute hospitalization phase
-duration_adverse_events <- 1 # Duration of adverse events in weeks
+u_adverse_events <- input_parameters$value[input_parameters$parameter == "u_adverse_events"] # Annual utility weight decrement during adverse events (EQ-5D scale)
+p_adverse_events <- input_parameters$value[input_parameters$parameter == "p_adverse_events"]  # Proportion of vaccinated people who experience an adverse event
+u_disutility_infection <- input_parameters$value[input_parameters$parameter == "u_disutility_infection"] # Weekly QALY disutility during acute infection phase
+u_disutility_hospitalization <- input_parameters$value[input_parameters$parameter == "u_disutility_hospitalization"] # Weekly QALY disutility during acute hospitalization phase
+duration_adverse_events <- input_parameters$value[input_parameters$parameter == "duration_adverse_events"] # Duration of adverse events in weeks
 
 # ==============================================================================
 # Step 2d: Costs
 # ==============================================================================
 
 # Vaccine Costs
-c_abrysvo <- 319 # Cost of Abrysvo vaccine dose
-c_arexvy <- 280 # Cost of Abrexvy dose
-c_vac_admin <- 50 # Cost to administer vaccines
+c_abrysvo <- input_parameters$value[input_parameters$parameter == "c_abrysvo"] # Cost of Abrysvo vaccine dose
+c_arexvy <- input_parameters$value[input_parameters$parameter == "c_arexvy"] # Cost of Abrexvy dose
+c_vac_admin <- input_parameters$value[input_parameters$parameter == "c_vac_admin"] # Cost to administer vaccines
 
 # RSV Costs
-c_office <- 126 # Cost per office visit
-c_ed <- 649 # Cost per ed day
-c_hosp <- 1116 # Cost per hospital day
-c_icu_v <- 4870 # Cost per icu day with mechanincal vent
-c_icu <- 3348 # Cost per icu day without mechanical vent
+c_office <- input_parameters$value[input_parameters$parameter == "c_office"] # Cost per office visit
+c_ed <- input_parameters$value[input_parameters$parameter == "c_ed"] # Cost per ed day
+c_hosp <- input_parameters$value[input_parameters$parameter == "c_hosp"] # Cost per hospital day
+c_icu_v <- input_parameters$value[input_parameters$parameter == "c_icu_v"] # Cost per icu day with mechanincal vent
+c_icu <- input_parameters$value[input_parameters$parameter == "c_icu"] # Cost per icu day without mechanical vent
 
 # Indirect Costs
-c_pl <- 275 # Cost per case of productivity loss
-c_care <- 583 # Cost per case of caregiver time
-c_hfr <- 92 # Cost of household financial risk (middle of distribution)
+c_pl <- input_parameters$value[input_parameters$parameter == "c_pl"] # Cost per case of productivity loss
+c_care <- input_parameters$value[input_parameters$parameter == "c_care"] # Cost per case of caregiver time
+c_hfr <- input_parameters$value[input_parameters$parameter == "c_hfr"] # Cost of household financial risk (middle of distribution)
 
 # Death Costs
-c_death <- 3799 # Cost to medicare for patient death (middle of distribution)
+c_death <- input_parameters$value[input_parameters$parameter == "c_death"] # Cost to medicare for patient death (middle of distribution)
 
 # ==============================================================================
 # Step 2e: Outcomes
 # ==============================================================================
 
-o_infected    <- 5  # Days of infection without medical attention
-o_Infected_ma <- 10 # Days of infection with medical attention
-o_infected_h <- 4 # Days of infection to hospitalization
-o_los_h <- 6.2 # Days of hospitalization without ICU
-o_los_icu <- 4.5 # Days in ICU
+o_infected    <- input_parameters$value[input_parameters$parameter == "o_infected"]    # Days of infection without medical attention
+o_Infected_ma <- input_parameters$value[input_parameters$parameter == "o_Infected_ma"] # Days of infection with medical attention
+o_infected_h  <- input_parameters$value[input_parameters$parameter == "o_infected_h"]  # Days of infection to hospitalization
+o_los_h       <- input_parameters$value[input_parameters$parameter == "o_los_h"]       # Days of hospitalization without ICU
+o_los_icu     <- input_parameters$value[input_parameters$parameter == "o_los_icu"]     # Days in ICU
 # o_los_h_pre_icu <- # TODO: Days in hospital prior to ICU admission (value not yet defined)
 # o_los_h_icu <-    # TODO: Days in hospital after being admitted to the ICU (value not yet defined)
 
@@ -134,7 +138,7 @@ o_los_icu <- 4.5 # Days in ICU
 # Step 2f: Discount
 # ==============================================================================
 
-p_discount_yr <- 0.03
+p_discount_yr <- input_parameters$value[input_parameters$parameter == "p_discount_yr"]
 p_discount_wk <- p_discount_yr / 52  # Weekly discount rate derived from annual rate
 
 # ==============================================================================
@@ -148,14 +152,12 @@ susceptible_threshold <- 1      # Threshold below which susceptible population i
 # Step 2h: Derived Transition Probabilities
 # ==============================================================================
 
-# Recovery rate from mild illness: expressed as a weekly rate using the
-# infectious period in days (o_infected defined in Step 2e).
-tau_1 <- 7 / o_infected
+tau_1 <- 7/o_infected # Recovery Rate from infected
 
 # Infection rate: derived from the RSV-ARI annual attack rate using the SIR
 # final size equation. R0 = -ln(1 - A) / A, where A = i_0_p.
 # beta = tau_1 * R0
-attack_rate <- 0.0162
+attack_rate <- input_parameters$value[input_parameters$parameter == "attack_rate"]
 beta <- tau_1 * (-log(1 - attack_rate) / attack_rate)
 
 # ==============================================================================
@@ -1189,7 +1191,407 @@ cat("      Row 3 compared to Row 2\n")
 cat("\n")
 
 # ==============================================================================
-# Step 7: Post-Simulation Validation Report
+# Step 7: Deterministic One-Way Sensitivity Analysis (OWSA)
+# ==============================================================================
+
+# Only parameters that (a) have both bounds defined in the CSV and (b) map
+# directly to an argument of run_simulation() are eligible.  o_Infected_ma has
+# bounds in the CSV but is not used by run_simulation(), so it is excluded.
+owsa_eligible_params <- c(
+  "kappa_arexvy", "kappa_abrysvo",
+  "u_s_vn", "u_v", "u_s_ve", "u_e", "u_i", "u_h",
+  "u_sq", "u_r", "u_adverse_events",
+  "u_disutility_infection", "u_disutility_hospitalization",
+  "c_hfr", "c_death", "o_infected"
+)
+
+# Willingness-to-pay threshold used to compute Net Monetary Benefit (NMB).
+# NMB = WTP * delta_QALY - delta_Cost is always continuous, so it is used
+# for the tornado diagram instead of ICER.  ICER can be discontinuous when
+# the incremental QALY denominator passes through zero across the parameter
+# range (which it does for several utility values including u_s_vn), which
+# causes bars that do not bracket the baseline ICER.  NMB avoids this pathology entirely.
+wtp_threshold <- 100000  # USD per QALY (standard US benchmark)
+
+# Build table of eligible parameters that actually have numeric bounds
+owsa_param_table <- input_parameters[
+  input_parameters$parameter %in% owsa_eligible_params,
+]
+owsa_param_table$lower_bound <- suppressWarnings(
+  as.numeric(owsa_param_table$lower_bound)
+)
+owsa_param_table$upper_bound <- suppressWarnings(
+  as.numeric(owsa_param_table$upper_bound)
+)
+owsa_param_table <- owsa_param_table[
+  !is.na(owsa_param_table$lower_bound) &
+    !is.na(owsa_param_table$upper_bound),
+]
+
+# Helper: run all three scenarios with one parameter overridden.
+# Console output is redirected to a temp file via sink() so that assignments
+# are made directly in this function's frame (avoiding the scoping ambiguity
+# of capture.output() when called inside suppressWarnings()).
+run_owsa_scenario <- function(param_name, param_value) {
+
+  # tau_1 and beta are both derived from o_infected (tau_1 = 7 / o_infected).
+  # When o_infected is the parameter being varied, propagate the change through
+  # to tau_1 and beta so the epidemic dynamics are consistent.
+  local_o_infected <- if (param_name == "o_infected") param_value else o_infected
+  local_tau_1      <- 7 / local_o_infected
+  local_beta       <- local_tau_1 * (-log(1 - attack_rate) / attack_rate)
+
+  # Return overridden value for the target parameter, baseline otherwise
+  pv <- function(pname, base_val) {
+    if (param_name == pname) param_value else base_val
+  }
+
+  # Redirect stdout to suppress verbose simulation logs; on.exit ensures the
+  # sink is always restored even if an error occurs mid-simulation.
+  sink(tempfile())
+  on.exit(sink(), add = TRUE)
+
+  res_soc <- suppressWarnings(run_simulation(
+    p_60 = p_60, v_0_p = v_0_p, i_0_p = i_0_p, h_0_p = h_0_p,
+    beta = local_beta, sigma = sigma, phi = phi,
+    tau_1 = local_tau_1, tau_2 = tau_2, tau_3 = tau_3,
+    rho = rho, mu = mu,
+    delta_m = delta_m, delta_s = delta_s, delta_sq = delta_sq,
+    gamma_r = gamma_r, psi = psi, kappa = 0, gamma_v = gamma_v,
+    u_s_vn = pv("u_s_vn", u_s_vn), u_v = pv("u_v", u_v),
+    u_s_ve = pv("u_s_ve", u_s_ve), u_e = pv("u_e", u_e),
+    u_i = pv("u_i", u_i), u_h = pv("u_h", u_h),
+    u_sq = pv("u_sq", u_sq), u_r = pv("u_r", u_r), u_d = u_d,
+    u_adverse_events = pv("u_adverse_events", u_adverse_events),
+    p_adverse_events = p_adverse_events,
+    u_disutility_infection = pv(
+      "u_disutility_infection", u_disutility_infection
+    ),
+    u_disutility_hospitalization = pv(
+      "u_disutility_hospitalization", u_disutility_hospitalization
+    ),
+    duration_adverse_events = duration_adverse_events,
+    c_vaccine = 0, c_vac_admin = c_vac_admin, c_hosp = c_hosp,
+    c_pl = c_pl, c_care = c_care,
+    c_hfr = pv("c_hfr", c_hfr), c_death = pv("c_death", c_death),
+    o_infected = pv("o_infected", o_infected), o_los_h = o_los_h,
+    p_discount_wk = p_discount_wk,
+    max_periods = max_periods,
+    susceptible_threshold = susceptible_threshold,
+    use_vaccine = FALSE, vaccine_name = "SOC_OWSA"
+  ))
+
+  res_arexvy <- suppressWarnings(run_simulation(
+    p_60 = p_60, v_0_p = v_0_p, i_0_p = i_0_p, h_0_p = h_0_p,
+    beta = local_beta, sigma = sigma, phi = phi,
+    tau_1 = local_tau_1, tau_2 = tau_2, tau_3 = tau_3,
+    rho = rho, mu = mu,
+    delta_m = delta_m, delta_s = delta_s, delta_sq = delta_sq,
+    gamma_r = gamma_r, psi = psi,
+    kappa = pv("kappa_arexvy", kappa_arexvy), gamma_v = gamma_v,
+    u_s_vn = pv("u_s_vn", u_s_vn), u_v = pv("u_v", u_v),
+    u_s_ve = pv("u_s_ve", u_s_ve), u_e = pv("u_e", u_e),
+    u_i = pv("u_i", u_i), u_h = pv("u_h", u_h),
+    u_sq = pv("u_sq", u_sq), u_r = pv("u_r", u_r), u_d = u_d,
+    u_adverse_events = pv("u_adverse_events", u_adverse_events),
+    p_adverse_events = p_adverse_events,
+    u_disutility_infection = pv(
+      "u_disutility_infection", u_disutility_infection
+    ),
+    u_disutility_hospitalization = pv(
+      "u_disutility_hospitalization", u_disutility_hospitalization
+    ),
+    duration_adverse_events = duration_adverse_events,
+    c_vaccine = c_arexvy, c_vac_admin = c_vac_admin, c_hosp = c_hosp,
+    c_pl = c_pl, c_care = c_care,
+    c_hfr = pv("c_hfr", c_hfr), c_death = pv("c_death", c_death),
+    o_infected = pv("o_infected", o_infected), o_los_h = o_los_h,
+    p_discount_wk = p_discount_wk,
+    max_periods = max_periods,
+    susceptible_threshold = susceptible_threshold,
+    use_vaccine = TRUE, vaccine_name = "Arexvy_OWSA"
+  ))
+
+  res_abrysvo <- suppressWarnings(run_simulation(
+    p_60 = p_60, v_0_p = v_0_p, i_0_p = i_0_p, h_0_p = h_0_p,
+    beta = local_beta, sigma = sigma, phi = phi,
+    tau_1 = local_tau_1, tau_2 = tau_2, tau_3 = tau_3,
+    rho = rho, mu = mu,
+    delta_m = delta_m, delta_s = delta_s, delta_sq = delta_sq,
+    gamma_r = gamma_r, psi = psi,
+    kappa = pv("kappa_abrysvo", kappa_abrysvo), gamma_v = gamma_v,
+    u_s_vn = pv("u_s_vn", u_s_vn), u_v = pv("u_v", u_v),
+    u_s_ve = pv("u_s_ve", u_s_ve), u_e = pv("u_e", u_e),
+    u_i = pv("u_i", u_i), u_h = pv("u_h", u_h),
+    u_sq = pv("u_sq", u_sq), u_r = pv("u_r", u_r), u_d = u_d,
+    u_adverse_events = pv("u_adverse_events", u_adverse_events),
+    p_adverse_events = p_adverse_events,
+    u_disutility_infection = pv(
+      "u_disutility_infection", u_disutility_infection
+    ),
+    u_disutility_hospitalization = pv(
+      "u_disutility_hospitalization", u_disutility_hospitalization
+    ),
+    duration_adverse_events = duration_adverse_events,
+    c_vaccine = c_abrysvo, c_vac_admin = c_vac_admin, c_hosp = c_hosp,
+    c_pl = c_pl, c_care = c_care,
+    c_hfr = pv("c_hfr", c_hfr), c_death = pv("c_death", c_death),
+    o_infected = pv("o_infected", o_infected), o_los_h = o_los_h,
+    p_discount_wk = p_discount_wk,
+    max_periods = max_periods,
+    susceptible_threshold = susceptible_threshold,
+    use_vaccine = TRUE, vaccine_name = "Abrysvo_OWSA"
+  ))
+
+  cost_soc     <- sum(res_soc$cost_total)
+  qaly_soc     <- sum(res_soc$utility_total)
+  cost_arexvy  <- sum(res_arexvy$cost_total)
+  qaly_arexvy  <- sum(res_arexvy$utility_total)
+  cost_abrysvo <- sum(res_abrysvo$cost_total)
+  qaly_abrysvo <- sum(res_abrysvo$utility_total)
+
+  inc_cost_arexvy  <- cost_arexvy  - cost_soc
+  inc_cost_abrysvo <- cost_abrysvo - cost_soc
+  inc_qaly_arexvy  <- qaly_arexvy  - qaly_soc
+  inc_qaly_abrysvo <- qaly_abrysvo - qaly_soc
+
+  list(
+    icer_arexvy  = inc_cost_arexvy  / inc_qaly_arexvy,
+    icer_abrysvo = inc_cost_abrysvo / inc_qaly_abrysvo,
+    # NMB = WTP * delta_QALY - delta_Cost (always continuous)
+    nmb_arexvy   = wtp_threshold * inc_qaly_arexvy  - inc_cost_arexvy,
+    nmb_abrysvo  = wtp_threshold * inc_qaly_abrysvo - inc_cost_abrysvo
+  )
+}
+
+# Baseline NMB values (computed from the Step 6 incremental cost/QALY)
+nmb_baseline_arexvy  <- wtp_threshold * inc_qaly_arexvy_vs_soc  -
+  inc_cost_arexvy_vs_soc
+nmb_baseline_abrysvo <- wtp_threshold * inc_qaly_abrysvo_vs_soc -
+  inc_cost_abrysvo_vs_soc
+
+# Iterate over each eligible parameter, testing at lower and upper bound
+cat("Running One-Way Sensitivity Analysis...\n")
+cat(sprintf("  Testing %d parameters\n\n", nrow(owsa_param_table)))
+
+owsa_results <- data.table(
+  parameter             = character(),
+  description           = character(),
+  base_value            = numeric(),
+  lower_bound           = numeric(),
+  upper_bound           = numeric(),
+  icer_arexvy_at_lower  = numeric(),
+  icer_arexvy_at_upper  = numeric(),
+  icer_abrysvo_at_lower = numeric(),
+  icer_abrysvo_at_upper = numeric(),
+  nmb_arexvy_at_lower   = numeric(),
+  nmb_arexvy_at_upper   = numeric(),
+  nmb_abrysvo_at_lower  = numeric(),
+  nmb_abrysvo_at_upper  = numeric()
+)
+
+for (i in seq_len(nrow(owsa_param_table))) {
+  pname   <- owsa_param_table$parameter[i]
+  p_lower <- owsa_param_table$lower_bound[i]
+  p_upper <- owsa_param_table$upper_bound[i]
+  pbase   <- as.numeric(owsa_param_table$value[i])
+  pdesc   <- owsa_param_table$description[i]
+
+  cat(sprintf("  [%d/%d] %s\n", i, nrow(owsa_param_table), pname))
+
+  res_lower <- run_owsa_scenario(pname, p_lower)
+  res_upper <- run_owsa_scenario(pname, p_upper)
+
+  owsa_results <- rbindlist(list(
+    owsa_results,
+    data.table(
+      parameter             = pname,
+      description           = pdesc,
+      base_value            = pbase,
+      lower_bound           = p_lower,
+      upper_bound           = p_upper,
+      icer_arexvy_at_lower  = res_lower$icer_arexvy,
+      icer_arexvy_at_upper  = res_upper$icer_arexvy,
+      icer_abrysvo_at_lower = res_lower$icer_abrysvo,
+      icer_abrysvo_at_upper = res_upper$icer_abrysvo,
+      nmb_arexvy_at_lower   = res_lower$nmb_arexvy,
+      nmb_arexvy_at_upper   = res_upper$nmb_arexvy,
+      nmb_abrysvo_at_lower  = res_lower$nmb_abrysvo,
+      nmb_abrysvo_at_upper  = res_upper$nmb_abrysvo
+    )
+  ))
+}
+
+cat("\n")
+
+# Print OWSA summary tables
+cat("==============================================================================\n")
+cat("        One-Way Sensitivity Analysis Results (sorted by ICER range)\n")
+cat("==============================================================================\n\n")
+
+owsa_arexvy_display <- owsa_results[, .(
+  Parameter       = parameter,
+  `Base Value`    = round(base_value, 4),
+  `Lower Bound`   = round(lower_bound, 4),
+  `ICER at Lower` = round(icer_arexvy_at_lower, 0),
+  `Upper Bound`   = round(upper_bound, 4),
+  `ICER at Upper` = round(icer_arexvy_at_upper, 0),
+  `ICER Range`    = round(
+    abs(icer_arexvy_at_upper - icer_arexvy_at_lower), 0
+  )
+)]
+
+owsa_abrysvo_display <- owsa_results[, .(
+  Parameter       = parameter,
+  `Base Value`    = round(base_value, 4),
+  `Lower Bound`   = round(lower_bound, 4),
+  `ICER at Lower` = round(icer_abrysvo_at_lower, 0),
+  `Upper Bound`   = round(upper_bound, 4),
+  `ICER at Upper` = round(icer_abrysvo_at_upper, 0),
+  `ICER Range`    = round(
+    abs(icer_abrysvo_at_upper - icer_abrysvo_at_lower), 0
+  )
+)]
+
+cat("Arexvy vs Standard of Care:\n")
+print(owsa_arexvy_display[order(-`ICER Range`)])
+cat("\n")
+cat("Abrysvo vs Standard of Care:\n")
+print(owsa_abrysvo_display[order(-`ICER Range`)])
+cat("\n")
+
+# Build an ICER tornado diagram.
+# Parameters where the baseline ICER falls outside [lower-bound ICER,
+# upper-bound ICER] are excluded and listed separately.  This happens when
+# the incremental QALY denominator changes sign across the parameter range
+# (a mathematical discontinuity in the ICER formula, not a model error).
+make_tornado_plot <- function(owsa_dt, col_lower, col_upper,
+                              icer_baseline, title_str) {
+
+  plot_dt <- data.table(
+    label      = owsa_dt$description,
+    icer_lower = owsa_dt[[col_lower]],
+    icer_upper = owsa_dt[[col_upper]]
+  )
+
+  # Replace non-finite ICERs (0/0) with the baseline so the bar collapses
+  # to zero width and is removed by the range filter below
+  plot_dt[!is.finite(icer_lower), icer_lower := icer_baseline]
+  plot_dt[!is.finite(icer_upper), icer_upper := icer_baseline]
+
+  plot_dt[, bar_min   := pmin(icer_lower, icer_upper)]
+  plot_dt[, bar_max   := pmax(icer_lower, icer_upper)]
+  plot_dt[, icer_range := bar_max - bar_min]
+
+  # Separate parameters that bracket the baseline from those that do not
+  valid_dt   <- plot_dt[bar_min <= icer_baseline & icer_baseline <= bar_max &
+                          icer_range > 0]
+  excluded_dt <- plot_dt[!(bar_min <= icer_baseline & icer_baseline <= bar_max) |
+                           icer_range == 0]
+
+  if (nrow(excluded_dt) > 0) {
+    cat(sprintf("\n%s -- excluded parameters:\n", title_str))
+    cat("  (baseline ICER outside [lower-bound ICER, upper-bound ICER];\n")
+    cat("  incremental QALY changes sign across the parameter range)\n")
+    for (j in seq_len(nrow(excluded_dt))) {
+      cat(sprintf("  %-45s range [%10.0f, %10.0f]  baseline %10.0f\n",
+                  excluded_dt$label[j],
+                  excluded_dt$bar_min[j], excluded_dt$bar_max[j],
+                  icer_baseline))
+    }
+    cat("\n")
+  }
+
+  if (nrow(valid_dt) == 0) {
+    cat("No valid parameters for tornado diagram:", title_str, "\n")
+    return(NULL)
+  }
+
+  # Sort ascending so the widest bar plots at the top in ggplot
+  valid_dt <- valid_dt[order(icer_range)]
+  valid_dt[, label := factor(label, levels = label)]
+
+  ggplot(valid_dt, aes(y = label)) +
+    geom_segment(
+      aes(x = bar_min, xend = bar_max, yend = label),
+      linewidth = 6, color = "#2B7BB9", alpha = 0.75
+    ) +
+    geom_vline(
+      xintercept = icer_baseline,
+      color = "red", linetype = "dashed", linewidth = 0.9
+    ) +
+    scale_x_continuous(labels = scales::comma) +
+    labs(
+      title    = title_str,
+      subtitle = sprintf(
+        "Baseline ICER = $%s / QALY",
+        formatC(icer_baseline, format = "f", digits = 0, big.mark = ",")
+      ),
+      x       = "ICER ($ / QALY)",
+      y       = NULL,
+      caption = paste0(
+        "Red dashed line = baseline ICER. ",
+        "Parameters sorted by influence (widest bar at top). ",
+        "Parameters excluded where delta-QALY changes sign."
+      )
+    ) +
+    theme_minimal(base_size = 11) +
+    theme(
+      plot.title    = element_text(face = "bold", hjust = 0.5),
+      plot.subtitle = element_text(hjust = 0.5),
+      axis.text.y   = element_text(size = 9),
+      plot.caption  = element_text(size = 8, hjust = 0)
+    )
+}
+
+plot_tornado_arexvy <- make_tornado_plot(
+  owsa_results,
+  "icer_arexvy_at_lower",
+  "icer_arexvy_at_upper",
+  icer_arexvy_vs_soc,
+  "Tornado Diagram: Arexvy vs Standard of Care"
+)
+
+plot_tornado_abrysvo <- make_tornado_plot(
+  owsa_results,
+  "icer_abrysvo_at_lower",
+  "icer_abrysvo_at_upper",
+  icer_abrysvo_vs_soc,
+  "Tornado Diagram: Abrysvo vs Standard of Care"
+)
+
+pdf("rsv_owsa_tornado.pdf", width = 11, height = 7)
+if (!is.null(plot_tornado_arexvy))  print(plot_tornado_arexvy)
+if (!is.null(plot_tornado_abrysvo)) print(plot_tornado_abrysvo)
+dev.off()
+cat("Tornado diagrams saved to: rsv_owsa_tornado.pdf\n")
+
+if (!is.null(plot_tornado_arexvy)) {
+  ggsave("rsv_owsa_tornado_arexvy.png", plot = plot_tornado_arexvy,
+         width = 11, height = 7, dpi = 300)
+}
+if (!is.null(plot_tornado_abrysvo)) {
+  ggsave("rsv_owsa_tornado_abrysvo.png", plot = plot_tornado_abrysvo,
+         width = 11, height = 7, dpi = 300)
+}
+cat("Tornado diagrams saved to: rsv_owsa_tornado_arexvy.png,",
+    "rsv_owsa_tornado_abrysvo.png\n")
+
+write_xlsx(
+  list(
+    "Arexvy OWSA"  = as.data.frame(
+      owsa_arexvy_display[order(-`ICER Range`)]
+    ),
+    "Abrysvo OWSA" = as.data.frame(
+      owsa_abrysvo_display[order(-`ICER Range`)]
+    )
+  ),
+  "rsv_owsa_results.xlsx"
+)
+cat("OWSA results exported to: rsv_owsa_results.xlsx\n\n")
+
+# ==============================================================================
+# Step 8: Post-Simulation Validation Report
 # ==============================================================================
 
 # Run comprehensive validation report
