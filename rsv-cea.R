@@ -12,6 +12,7 @@
 library(data.table) # Fast data manipulation and storage for simulation results
 library(writexl)    # Excel file export
 library(ggplot2)    # Tornado diagram visualisation
+library(parallel)   # Parallel PSA via fork-based mclapply (macOS / Linux)
 
 # ==============================================================================
 # Step 2: Define variables
@@ -1591,7 +1592,698 @@ write_xlsx(
 cat("OWSA results exported to: rsv_owsa_results.xlsx\n\n")
 
 # ==============================================================================
-# Step 8: Post-Simulation Validation Report
+# Step 8: Probabilistic Sensitivity Analysis (PSA)
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# Step 8a: Derive sampling parameters for "normal" distribution variables
+# ------------------------------------------------------------------------------
+#
+# Sampling method selection for parameters labelled "normal" in the CSV:
+#
+#   rlnorm — used for parameters that are strictly positive with asymmetric
+#     95% CIs, indicating the log-scale is the natural scale for uncertainty
+#     (small rates, probabilities, costs, right-skewed durations). mu_log is
+#     the midpoint of log(lower) and log(upper); sigma_log is the half log-
+#     range divided by 1.96.
+#
+#   rnorm — used where the 95% CI is symmetric around the mean, the parameter
+#     is bounded well away from zero, and the source literature reports a
+#     symmetric interval on the natural scale:
+#       kappa_arexvy / kappa_abrysvo: perfectly symmetric CIs (±0.009 /
+#         ±0.011) from vaccine trial efficacy on the natural scale.
+#       o_infected: perfectly symmetric CI (±3 days).
+#       p_adverse_events: near-symmetric CI (-0.04 / +0.05), above zero.
+#     Standard deviation is the half CI width divided by 1.96.
+#
+#   Fixed — tau_2 has no published CI and is held at its point estimate.
+#     Note: o_infected_h bounds [2, 6.75] are IQR (25th-75th percentile),
+#     not a 95% CI. The sigma_log denominator is 2 * qnorm(0.75) = 1.3490.
+# ------------------------------------------------------------------------------
+
+# Extract all parameters labelled "normal" in the distribution column
+psa_normal_raw <- input_parameters[
+  !is.na(input_parameters$distribution) &
+    trimws(input_parameters$distribution) == "normal",
+]
+
+psa_normal_raw$value       <- as.numeric(psa_normal_raw$value)
+psa_normal_raw$lower_bound <- suppressWarnings(
+  as.numeric(psa_normal_raw$lower_bound)
+)
+psa_normal_raw$upper_bound <- suppressWarnings(
+  as.numeric(psa_normal_raw$upper_bound)
+)
+
+# Split: parameters with bounds vs. those held fixed (tau_2: no bounds)
+psa_normal_fixed  <- psa_normal_raw[
+  is.na(psa_normal_raw$lower_bound) | is.na(psa_normal_raw$upper_bound),
+]
+psa_normal_bounds <- psa_normal_raw[
+  !is.na(psa_normal_raw$lower_bound) & !is.na(psa_normal_raw$upper_bound),
+]
+
+# Split bounded parameters by sampling distribution
+psa_rnorm_names <- c(
+  "kappa_arexvy", "kappa_abrysvo", "o_infected", "p_adverse_events"
+)
+psa_normal_rnorm <- psa_normal_bounds[
+  psa_normal_bounds$parameter %in% psa_rnorm_names,
+]
+psa_normal_rlnorm <- psa_normal_bounds[
+  !psa_normal_bounds$parameter %in% psa_rnorm_names,
+]
+
+# rnorm: SD derived from 95% CI half-width
+psa_normal_rnorm$sd <- with(psa_normal_rnorm,
+  (upper_bound - lower_bound) / (2 * 1.96)
+)
+
+# rlnorm: log-scale mean is midpoint of log(lower) and log(upper).
+# sigma_log denominator is 2*qnorm(0.75) for o_infected_h (IQR bounds)
+# and 2*1.96 for all others (95% CI bounds).
+psa_normal_rlnorm$mu_log <- with(psa_normal_rlnorm,
+  (log(lower_bound) + log(upper_bound)) / 2
+)
+psa_normal_rlnorm$sigma_log <- ifelse(
+  psa_normal_rlnorm$parameter == "o_infected_h",
+  (log(psa_normal_rlnorm$upper_bound) -
+     log(psa_normal_rlnorm$lower_bound)) / (2 * qnorm(0.75)),
+  (log(psa_normal_rlnorm$upper_bound) -
+     log(psa_normal_rlnorm$lower_bound)) / (2 * 1.96)
+)
+
+cat("=== PSA Step 8a: Normal distribution parameter derivations ===\n\n")
+
+cat("--- rlnorm (lognormal; asymmetric CI or strictly positive) ---\n")
+print(psa_normal_rlnorm[
+  , c("parameter", "value", "lower_bound", "upper_bound",
+      "mu_log", "sigma_log")
+])
+
+cat("\n--- rnorm (normal; symmetric CI, well-bounded from zero) ---\n")
+print(psa_normal_rnorm[
+  , c("parameter", "value", "lower_bound", "upper_bound", "sd")
+])
+
+cat("\n--- Fixed in PSA (no CI bounds provided) ---\n")
+print(psa_normal_fixed[, c("parameter", "value")])
+
+# ------------------------------------------------------------------------------
+# Step 8b: Sample one draw for "normal" distribution variables
+# ------------------------------------------------------------------------------
+# For rlnorm parameters: draw on the log scale with rnorm(), then exponentiate
+# to recover a natural-scale value. This two-step process is mathematically
+# equivalent to rlnorm() and will be consistent with how gamma and beta draws
+# are assembled in Steps 8c and 8d before the full loop in Step 8e.
+# For rnorm parameters: draw directly on the natural scale.
+# Fixed parameters return their point estimate unchanged.
+# ------------------------------------------------------------------------------
+
+draw_normal_params <- function() {
+
+  # rlnorm: draw on log scale then exponentiate
+  rlnorm_draws <- setNames(
+    mapply(
+      function(mu, sigma) exp(rnorm(1, mu, sigma)),
+      psa_normal_rlnorm$mu_log,
+      psa_normal_rlnorm$sigma_log
+    ),
+    psa_normal_rlnorm$parameter
+  )
+
+  # rnorm: draw directly on natural scale
+  rnorm_draws <- setNames(
+    mapply(
+      function(mu, sd) rnorm(1, mu, sd),
+      psa_normal_rnorm$value,
+      psa_normal_rnorm$sd
+    ),
+    psa_normal_rnorm$parameter
+  )
+
+  # Fixed: return point estimate unchanged
+  fixed_draws <- setNames(
+    psa_normal_fixed$value,
+    psa_normal_fixed$parameter
+  )
+
+  c(rlnorm_draws, rnorm_draws, fixed_draws)
+}
+
+# ------------------------------------------------------------------------------
+# Step 8c: Derive sampling parameters for "gamma" distribution variables
+# ------------------------------------------------------------------------------
+# Gamma distributions are used for strictly positive costs and length-of-stay
+# parameters.
+#
+# Three cases are handled:
+#
+#   Direct shape/scale — o_los_h: the lower_bound and upper_bound columns
+#     contain the gamma shape and scale parameters directly (not CI bounds).
+#     Verified: shape * scale = 1.2258 * 5.0582 = 6.2, matching the mean.
+#
+#   Method of moments from 95% CI — c_hfr, c_death: SE is the half CI
+#     width divided by 1.96. Alpha equals (mean/SE) squared; rate lambda
+#     equals mean divided by SE squared.
+#
+#   Method of moments, CV = 1 — all other gamma parameters have no bounds.
+#     SE is assumed equal to the mean (coefficient of variation = 1), which
+#     implies alpha = 1, yielding an exponential distribution. This is the
+#     standard diffuse assumption when no variance data are available.
+# ------------------------------------------------------------------------------
+
+psa_gamma_raw <- input_parameters[
+  !is.na(input_parameters$distribution) &
+    trimws(input_parameters$distribution) == "gamma",
+]
+
+psa_gamma_raw$value       <- as.numeric(psa_gamma_raw$value)
+psa_gamma_raw$lower_bound <- suppressWarnings(
+  as.numeric(psa_gamma_raw$lower_bound)
+)
+psa_gamma_raw$upper_bound <- suppressWarnings(
+  as.numeric(psa_gamma_raw$upper_bound)
+)
+
+# Separate o_los_h (direct shape/scale) from method-of-moments parameters
+psa_gamma_direct <- psa_gamma_raw[
+  psa_gamma_raw$parameter == "o_los_h",
+]
+psa_gamma_mom <- psa_gamma_raw[
+  psa_gamma_raw$parameter != "o_los_h",
+]
+
+# SE from 95% CI where bounds exist; SE = mean (CV = 1) otherwise
+psa_gamma_mom$se <- ifelse(
+  !is.na(psa_gamma_mom$lower_bound) & !is.na(psa_gamma_mom$upper_bound),
+  (psa_gamma_mom$upper_bound - psa_gamma_mom$lower_bound) / (2 * 1.96),
+  psa_gamma_mom$value
+)
+psa_gamma_mom$alpha  <- with(psa_gamma_mom, (value / se)^2)
+psa_gamma_mom$lambda <- with(psa_gamma_mom, value / se^2)
+
+cat("=== PSA Step 8c: Gamma distribution parameter derivations ===\n\n")
+
+cat("--- Direct shape/scale (o_los_h only) ---\n")
+print(psa_gamma_direct[
+  , c("parameter", "value", "lower_bound", "upper_bound")
+])
+
+cat("\n--- Method of moments with CI bounds (SE from bounds) ---\n")
+psa_gamma_mom_bounds <- psa_gamma_mom[
+  !is.na(psa_gamma_mom$lower_bound) & !is.na(psa_gamma_mom$upper_bound),
+]
+print(psa_gamma_mom_bounds[
+  , c("parameter", "value", "lower_bound", "upper_bound",
+      "se", "alpha", "lambda")
+])
+
+cat("\n--- Method of moments, no bounds (SE = mean; alpha = 1,")
+cat(" exponential) ---\n")
+psa_gamma_mom_no_bounds <- psa_gamma_mom[
+  is.na(psa_gamma_mom$lower_bound) | is.na(psa_gamma_mom$upper_bound),
+]
+print(psa_gamma_mom_no_bounds[
+  , c("parameter", "value", "se", "alpha", "lambda")
+])
+
+# ------------------------------------------------------------------------------
+# Step 8d: Sample one draw for "gamma" distribution variables
+# ------------------------------------------------------------------------------
+# o_los_h: draw with shape and scale taken directly from the parameter table.
+# All others: draw with method-of-moments shape and rate.
+# ------------------------------------------------------------------------------
+
+draw_gamma_params <- function() {
+
+  # o_los_h: direct shape and scale
+  direct_draws <- setNames(
+    mapply(
+      function(shape, scale) rgamma(1, shape = shape, scale = scale),
+      psa_gamma_direct$lower_bound,
+      psa_gamma_direct$upper_bound
+    ),
+    psa_gamma_direct$parameter
+  )
+
+  # All others: method-of-moments shape and rate
+  mom_draws <- setNames(
+    mapply(
+      function(alpha, lambda) rgamma(1, shape = alpha, rate = lambda),
+      psa_gamma_mom$alpha,
+      psa_gamma_mom$lambda
+    ),
+    psa_gamma_mom$parameter
+  )
+
+  c(direct_draws, mom_draws)
+}
+
+# ------------------------------------------------------------------------------
+# Step 8e: Derive sampling parameters for "beta" distribution variables
+# ------------------------------------------------------------------------------
+# Beta distributions are used for utilities and disutilities.
+#
+# Two cases are handled:
+#
+#   Natural [0, 1] — positive utility parameters: beta is fit directly on
+#     [0, 1] via method of moments. SE is the half CI width divided by 1.96.
+#     Concentration phi equals mu times (1 - mu) divided by SE squared,
+#     minus 1. Alpha equals mu times phi; beta_shape equals (1-mu) times phi.
+#
+#   Scaled [L, U] — negative disutility parameters (u_adverse_events,
+#     u_disutility_infection, u_disutility_hospitalization): the parameter
+#     space [L, U] is transformed to [0, 1] for fitting. mu_s is the
+#     position of the mean within [L, U]. Because SE equals (U-L)/(2*1.96),
+#     the scaled SE simplifies to 1/(2*1.96) for all scaled parameters.
+#     Method-of-moments is applied on the scaled space. Draws are then
+#     back-transformed by multiplying by (U - L) and adding L.
+# ------------------------------------------------------------------------------
+
+psa_beta_raw <- input_parameters[
+  !is.na(input_parameters$distribution) &
+    trimws(input_parameters$distribution) == "beta",
+]
+
+psa_beta_raw$value       <- as.numeric(psa_beta_raw$value)
+psa_beta_raw$lower_bound <- suppressWarnings(
+  as.numeric(psa_beta_raw$lower_bound)
+)
+psa_beta_raw$upper_bound <- suppressWarnings(
+  as.numeric(psa_beta_raw$upper_bound)
+)
+
+# Natural [0, 1]: positive utility parameters
+psa_beta_natural <- psa_beta_raw[psa_beta_raw$value >= 0, ]
+# Scaled [L, U]: negative disutility parameters
+psa_beta_scaled  <- psa_beta_raw[psa_beta_raw$value <  0, ]
+
+# Natural: method of moments from mean and SE
+psa_beta_natural$se <- with(psa_beta_natural,
+  (upper_bound - lower_bound) / (2 * 1.96)
+)
+psa_beta_natural$phi <- with(psa_beta_natural,
+  value * (1 - value) / se^2 - 1
+)
+psa_beta_natural$alpha      <- with(psa_beta_natural, value * phi)
+psa_beta_natural$beta_shape <- with(psa_beta_natural, (1 - value) * phi)
+
+# Scaled: transform mu to [0, 1]; SE_s = 1 / (2 * 1.96) for all
+psa_beta_scaled$mu_s  <- with(psa_beta_scaled,
+  (value - lower_bound) / (upper_bound - lower_bound)
+)
+psa_beta_scaled$se_s  <- 1 / (2 * 1.96)
+psa_beta_scaled$phi_s <- with(psa_beta_scaled,
+  mu_s * (1 - mu_s) / se_s^2 - 1
+)
+psa_beta_scaled$alpha      <- with(psa_beta_scaled, mu_s * phi_s)
+psa_beta_scaled$beta_shape <- with(psa_beta_scaled, (1 - mu_s) * phi_s)
+
+cat("=== PSA Step 8e: Beta distribution parameter derivations ===\n\n")
+
+cat("--- Natural [0, 1] parameters ---\n")
+print(psa_beta_natural[
+  , c("parameter", "value", "lower_bound", "upper_bound",
+      "alpha", "beta_shape")
+])
+
+cat("\n--- Scaled [L, U] parameters (negative disutilities) ---\n")
+print(psa_beta_scaled[
+  , c("parameter", "value", "lower_bound", "upper_bound",
+      "mu_s", "alpha", "beta_shape")
+])
+
+# ------------------------------------------------------------------------------
+# Step 8f: Sample one draw for "beta" distribution variables
+# ------------------------------------------------------------------------------
+# Natural parameters: draw directly from beta on [0, 1].
+# Scaled parameters: draw from beta on [0, 1], back-transform to [L, U].
+# ------------------------------------------------------------------------------
+
+draw_beta_params <- function() {
+
+  # Natural [0, 1]: draw directly
+  natural_draws <- setNames(
+    mapply(
+      function(alpha, beta_shape) rbeta(1, alpha, beta_shape),
+      psa_beta_natural$alpha,
+      psa_beta_natural$beta_shape
+    ),
+    psa_beta_natural$parameter
+  )
+
+  # Scaled [L, U]: draw on [0, 1] then back-transform
+  scaled_draws <- setNames(
+    mapply(
+      function(alpha, beta_shape, lb, ub) {
+        rbeta(1, alpha, beta_shape) * (ub - lb) + lb
+      },
+      psa_beta_scaled$alpha,
+      psa_beta_scaled$beta_shape,
+      psa_beta_scaled$lower_bound,
+      psa_beta_scaled$upper_bound
+    ),
+    psa_beta_scaled$parameter
+  )
+
+  c(natural_draws, scaled_draws)
+}
+
+# ==============================================================================
+# Step 8g: PSA Loop (parallelised — 4 workers via mclapply)
+# ==============================================================================
+# run_one_psa() encapsulates one complete simulation iteration and is mapped
+# across iterations by mclapply(). Fork-based parallelism (macOS / Linux)
+# copies the full parent R environment to each worker, so all parameter tables
+# and model functions are available without explicit export.
+#
+# RNG: RNGkind("L'Ecuyer-CMRG") assigns each forked worker its own
+#   independent substream of the same seed, giving reproducible results
+#   regardless of the number of cores used.
+#
+# Console logging: cat() output from child processes is written to the
+#   parent's stdout in real time. Lines from different workers may interleave
+#   but each line is atomic so readability is preserved.
+# ==============================================================================
+
+n_psa   <- 1000  # Number of PSA simulations
+n_cores <- 4     # Parallel workers (adjust to available cores)
+
+RNGkind("L'Ecuyer-CMRG")  # Reproducible parallel RNG
+set.seed(42)
+
+# run_one_psa() — one PSA iteration, returns a single data.table row
+run_one_psa <- function(sim) {
+
+  # Suppress run_simulation() console output within this worker
+  run_silent <- function(...) {
+    sink(tempfile())
+    on.exit(sink(), add = TRUE)
+    suppressWarnings(run_simulation(...))
+  }
+
+  # ------------------------------------------------------------------
+  # Draw one complete parameter set
+  # ------------------------------------------------------------------
+  p_norm  <- draw_normal_params()
+  p_gamma <- draw_gamma_params()
+  p_beta  <- draw_beta_params()
+
+  o_infected_s  <- p_norm[["o_infected"]]
+  attack_rate_s <- p_norm[["attack_rate"]]
+  tau_1_s      <- 7 / o_infected_s
+  beta_trans_s <- tau_1_s * (-log(1 - attack_rate_s) / attack_rate_s)
+
+  # ------------------------------------------------------------------
+  # Build shared arguments (identical across all three scenarios)
+  # ------------------------------------------------------------------
+  shared_args <- list(
+    p_60 = p_60, v_0_p = v_0_p,
+    i_0_p = p_norm[["i_0_p"]], h_0_p = p_norm[["h_0_p"]],
+    beta = beta_trans_s, sigma = sigma,
+    phi = p_norm[["phi"]],
+    tau_1 = tau_1_s,
+    tau_2 = p_norm[["tau_2"]], tau_3 = p_norm[["tau_3"]],
+    rho = p_norm[["rho"]], mu = mu,
+    delta_m = delta_m,
+    delta_s = p_norm[["delta_s"]], delta_sq = delta_sq,
+    gamma_r = gamma_r, psi = psi, gamma_v = gamma_v,
+    u_s_vn = p_beta[["u_s_vn"]], u_v = p_beta[["u_v"]],
+    u_s_ve = p_beta[["u_s_ve"]], u_e = p_beta[["u_e"]],
+    u_i = p_beta[["u_i"]], u_h = p_beta[["u_h"]],
+    u_sq = p_beta[["u_sq"]], u_r = p_beta[["u_r"]], u_d = u_d,
+    u_adverse_events = p_beta[["u_adverse_events"]],
+    p_adverse_events = p_norm[["p_adverse_events"]],
+    u_disutility_infection = p_beta[["u_disutility_infection"]],
+    u_disutility_hospitalization =
+      p_beta[["u_disutility_hospitalization"]],
+    duration_adverse_events = duration_adverse_events,
+    c_vac_admin = p_norm[["c_vac_admin"]],
+    c_hosp = p_gamma[["c_hosp"]],
+    c_pl = p_gamma[["c_pl"]], c_care = p_gamma[["c_care"]],
+    c_hfr = p_gamma[["c_hfr"]], c_death = p_gamma[["c_death"]],
+    o_infected = o_infected_s, o_los_h = p_gamma[["o_los_h"]],
+    p_discount_wk = p_discount_wk,
+    max_periods = max_periods,
+    susceptible_threshold = susceptible_threshold
+  )
+
+  # ------------------------------------------------------------------
+  # Run all three scenarios
+  # ------------------------------------------------------------------
+  res_soc <- do.call(run_silent, c(shared_args, list(
+    c_vaccine = 0, kappa = 0,
+    use_vaccine = FALSE, vaccine_name = "SOC_PSA"
+  )))
+  res_arexvy <- do.call(run_silent, c(shared_args, list(
+    c_vaccine = c_arexvy,
+    kappa = p_norm[["kappa_arexvy"]],
+    use_vaccine = TRUE, vaccine_name = "Arexvy_PSA"
+  )))
+  res_abrysvo <- do.call(run_silent, c(shared_args, list(
+    c_vaccine = c_abrysvo,
+    kappa = p_norm[["kappa_abrysvo"]],
+    use_vaccine = TRUE, vaccine_name = "Abrysvo_PSA"
+  )))
+
+  # ------------------------------------------------------------------
+  # Aggregate and compute ICERs
+  # ------------------------------------------------------------------
+  cost_soc     <- sum(res_soc$cost_total)
+  qaly_soc     <- sum(res_soc$utility_total)
+  cost_arexvy  <- sum(res_arexvy$cost_total)
+  qaly_arexvy  <- sum(res_arexvy$utility_total)
+  cost_abrysvo <- sum(res_abrysvo$cost_total)
+  qaly_abrysvo <- sum(res_abrysvo$utility_total)
+
+  icer_arexvy_s  <- (cost_arexvy  - cost_soc) / (qaly_arexvy  - qaly_soc)
+  icer_abrysvo_s <- (cost_abrysvo - cost_soc) / (qaly_abrysvo - qaly_soc)
+
+  cat(sprintf(
+    "  Sim %4d / %d | ICER Arexvy = $%s | ICER Abrysvo = $%s\n",
+    sim, n_psa,
+    format(round(icer_arexvy_s),  big.mark = ",", scientific = FALSE),
+    format(round(icer_abrysvo_s), big.mark = ",", scientific = FALSE)
+  ))
+
+  # ------------------------------------------------------------------
+  # Return one results row
+  # ------------------------------------------------------------------
+  data.table(
+    sim                          = sim,
+    # Normal distribution parameters
+    i_0_p                        = p_norm[["i_0_p"]],
+    h_0_p                        = p_norm[["h_0_p"]],
+    phi                          = p_norm[["phi"]],
+    rho                          = p_norm[["rho"]],
+    delta_s                      = p_norm[["delta_s"]],
+    attack_rate                  = attack_rate_s,
+    c_vac_admin                  = p_norm[["c_vac_admin"]],
+    o_infected                   = o_infected_s,
+    o_Infected_ma                = p_norm[["o_Infected_ma"]],
+    o_infected_h                 = p_norm[["o_infected_h"]],
+    kappa_arexvy                 = p_norm[["kappa_arexvy"]],
+    kappa_abrysvo                = p_norm[["kappa_abrysvo"]],
+    p_adverse_events             = p_norm[["p_adverse_events"]],
+    tau_2                        = p_norm[["tau_2"]],
+    tau_3                        = p_norm[["tau_3"]],
+    # Derived parameters
+    tau_1                        = tau_1_s,
+    beta_transmission            = beta_trans_s,
+    # Gamma distribution parameters
+    o_los_h                      = p_gamma[["o_los_h"]],
+    o_los_icu                    = p_gamma[["o_los_icu"]],
+    c_office                     = p_gamma[["c_office"]],
+    c_ed                         = p_gamma[["c_ed"]],
+    c_hosp                       = p_gamma[["c_hosp"]],
+    c_icu_v                      = p_gamma[["c_icu_v"]],
+    c_icu                        = p_gamma[["c_icu"]],
+    c_pl                         = p_gamma[["c_pl"]],
+    c_care                       = p_gamma[["c_care"]],
+    c_hfr                        = p_gamma[["c_hfr"]],
+    c_death                      = p_gamma[["c_death"]],
+    # Beta distribution parameters
+    u_s_vn                       = p_beta[["u_s_vn"]],
+    u_v                          = p_beta[["u_v"]],
+    u_s_ve                       = p_beta[["u_s_ve"]],
+    u_e                          = p_beta[["u_e"]],
+    u_i                          = p_beta[["u_i"]],
+    u_h                          = p_beta[["u_h"]],
+    u_sq                         = p_beta[["u_sq"]],
+    u_r                          = p_beta[["u_r"]],
+    u_adverse_events             = p_beta[["u_adverse_events"]],
+    u_disutility_infection       = p_beta[["u_disutility_infection"]],
+    u_disutility_hospitalization =
+      p_beta[["u_disutility_hospitalization"]],
+    # Costs and QALYs
+    total_cost_soc               = cost_soc,
+    total_qaly_soc               = qaly_soc,
+    total_cost_arexvy            = cost_arexvy,
+    total_qaly_arexvy            = qaly_arexvy,
+    total_cost_abrysvo           = cost_abrysvo,
+    total_qaly_abrysvo           = qaly_abrysvo,
+    # ICERs vs standard of care
+    icer_arexvy_vs_soc           = icer_arexvy_s,
+    icer_abrysvo_vs_soc          = icer_abrysvo_s
+  )
+}
+
+# run_psa() dispatches run_one_psa() across n_cores workers and combines rows
+run_psa <- function(n_sim, n_cores = 4) {
+  cat(sprintf(
+    "Running PSA: %d simulations on %d cores\n", n_sim, n_cores
+  ))
+  rbindlist(mclapply(
+    seq_len(n_sim),
+    run_one_psa,
+    mc.cores     = n_cores,
+    mc.set.seed  = TRUE
+  ))
+}
+
+psa_results_dt <- run_psa(n_psa, n_cores)
+cat("PSA complete.\n\n")
+
+write_xlsx(
+  list("PSA Results" = as.data.frame(psa_results_dt)),
+  "rsv_psa_results.xlsx"
+)
+cat("PSA results exported to: rsv_psa_results.xlsx\n\n")
+
+# ==============================================================================
+# Step 8i: Cost-Effectiveness Plane (PSA)
+# ==============================================================================
+# Best-practice CE plane elements:
+#   Scatter points   — one per simulation, semi-transparent to reveal density
+#   95% ellipses     — joint confidence region for incremental cost and effect
+#   Mean estimate    — open circle marking the mean incremental pair
+#   WTP threshold    — long-dashed line through the origin, slope = $100k/QALY;
+#                      points below this line are cost-effective at that WTP
+#   Reference axes   — dashed lines at x = 0 and y = 0 to delineate quadrants
+#
+# NMB-based cost-effectiveness: a simulation is cost-effective when
+#   WTP * inc_qaly - inc_cost > 0, which is consistent across all quadrants.
+#
+# Both vaccines are plotted together for direct visual comparison.
+# Colourblind-safe palette (Okabe-Ito blue and vermillion).
+# ==============================================================================
+
+# Compute incremental costs and QALYs vs SOC for each simulation
+psa_ce_data <- rbind(
+  data.table(
+    sim      = psa_results_dt$sim,
+    vaccine  = "Arexvy",
+    inc_qaly = psa_results_dt$total_qaly_arexvy -
+      psa_results_dt$total_qaly_soc,
+    inc_cost = psa_results_dt$total_cost_arexvy -
+      psa_results_dt$total_cost_soc
+  ),
+  data.table(
+    sim      = psa_results_dt$sim,
+    vaccine  = "Abrysvo",
+    inc_qaly = psa_results_dt$total_qaly_abrysvo -
+      psa_results_dt$total_qaly_soc,
+    inc_cost = psa_results_dt$total_cost_abrysvo -
+      psa_results_dt$total_cost_soc
+  )
+)
+
+# Mean incremental estimates per vaccine (plotted as open circles)
+psa_ce_means <- psa_ce_data[
+  , .(inc_qaly = mean(inc_qaly), inc_cost = mean(inc_cost)),
+  by = vaccine
+]
+
+# Proportion of simulations cost-effective at the WTP threshold via NMB
+psa_ce_data[
+  , cost_effective := (wtp_threshold * inc_qaly - inc_cost) > 0
+]
+psa_pct_ce <- psa_ce_data[
+  , .(pct_cost_effective = round(mean(cost_effective) * 100, 1)),
+  by = vaccine
+]
+
+cat("=== PSA Step 8i: Cost-Effectiveness Summary ===\n\n")
+cat("Mean incremental estimates vs SOC:\n")
+print(psa_ce_means)
+cat(sprintf(
+  "\nProportion cost-effective at WTP = $%s/QALY:\n",
+  format(wtp_threshold, big.mark = ",")
+))
+print(psa_pct_ce)
+
+# Colourblind-safe palette (Okabe-Ito)
+vaccine_colours <- c("Arexvy" = "#0072B2", "Abrysvo" = "#D55E00")
+
+# Build CE plane
+ce_plane <- ggplot(
+  psa_ce_data,
+  aes(x = inc_qaly, y = inc_cost, colour = vaccine)
+) +
+  # Quadrant reference lines
+  geom_hline(
+    yintercept = 0, colour = "grey60",
+    linewidth = 0.4, linetype = "dashed"
+  ) +
+  geom_vline(
+    xintercept = 0, colour = "grey60",
+    linewidth = 0.4, linetype = "dashed"
+  ) +
+  # WTP threshold through origin (slope = WTP per QALY)
+  geom_abline(
+    slope = wtp_threshold, intercept = 0,
+    colour = "grey20", linetype = "longdash", linewidth = 0.7
+  ) +
+  # Simulation scatter (semi-transparent to show density)
+  geom_point(alpha = 0.15, size = 0.8, shape = 16) +
+  # 95% joint confidence ellipse
+  stat_ellipse(level = 0.95, linewidth = 1.0) +
+  # Mean incremental estimate (open circle, white fill)
+  geom_point(
+    data = psa_ce_means,
+    aes(x = inc_qaly, y = inc_cost),
+    size = 4, shape = 21, fill = "white", stroke = 1.5
+  ) +
+  # Scales
+  scale_colour_manual(values = vaccine_colours) +
+  scale_y_continuous(labels = scales::label_dollar(big.mark = ",")) +
+  scale_x_continuous(labels = scales::label_comma()) +
+  # Labels
+  labs(
+    x       = "Incremental QALYs vs Standard of Care",
+    y       = "Incremental Cost (USD) vs Standard of Care",
+    colour  = NULL,
+    caption = paste0(
+      "Long-dashed line: WTP threshold ($",
+      format(wtp_threshold, big.mark = ","),
+      "/QALY). ",
+      "Open circles: mean estimates. ",
+      "Ellipses: 95% confidence regions."
+    )
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    legend.position       = "bottom",
+    legend.key.width      = unit(1.5, "lines"),
+    panel.grid.minor      = element_blank(),
+    plot.caption          = element_text(size = 8, colour = "grey40"),
+    plot.caption.position = "plot"
+  )
+
+# Export
+ggsave(
+  "rsv_psa_ce_plane.pdf", plot = ce_plane,
+  width = 8, height = 7, device = "pdf"
+)
+ggsave(
+  "rsv_psa_ce_plane.png", plot = ce_plane,
+  width = 8, height = 7, dpi = 300
+)
+cat("CE plane saved to: rsv_psa_ce_plane.pdf, rsv_psa_ce_plane.png\n\n")
+
+# ==============================================================================
+# Step 9: Post-Simulation Validation Report
 # ==============================================================================
 
 # Run comprehensive validation report

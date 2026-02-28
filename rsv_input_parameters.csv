@@ -1,0 +1,52 @@
+﻿parameter,description,value,lower_bound,upper_bound,distribution
+p_60,Total U.S. Population Age 60+,82973748,,,
+v_0_p,Percentage of p_60 that represents the vaccinated population for vaccine scenario at time 0,0.164,,,fixed
+i_0_p,Percentage of p_60 that represents the infectious population at time 0,0.000311538,0.000161538,0.000592308,normal
+h_0_p,Percentage of p_60 that represents the hospitalized population at time 0,2.88462E-05,1.73077E-05,4.23077E-05,normal
+kappa_arexvy,Vaccine Breakthrough Rate for Arexvy.,0.211,0.202,0.22,normal
+kappa_abrysvo,Vaccine Breakthrough Rate for Abrysvo.,0.222,0.211,0.233,normal
+psi,Weekly vaccination rate derived from annual rate of 16.2%,0.003115385,,,fixed
+gamma_v,Waning vaccine confered immunity,0.015,,,fixed
+gamma_r,Waning natual immunity,0.015,,,fixed
+sigma,Rate of conversion from exposed to infected,1,,,fixed
+phi,Rate of hospitalization,2.88462E-05,1.73077E-05,4.23077E-05,normal
+tau_2,Recovery Rate from hospitalization,0.904,,,normal
+tau_3,Recovery from sequelae,1,,,normal
+rho,Rate of transition to sequelae state,0.18,0.089,0.327,normal
+mu,Age adjusted weekly underlying mortality for U.S. population >60,0.00139,,,fixed
+delta_m,Mortality rate from mild RSV,0,,,fixed
+delta_s,Mortality rate from severe RSV,0.0713,0.054,0.0936,normal
+delta_sq,Mortality rate from RSV sequelae,0,,,fixed
+u_s_vn,"Unit of utility for Susceptible, vaccine naïve",0.815,0.572,1,beta
+u_v,"Unit of utility for Vaccinated (healthy, protected)",0.815,0.572,1,beta
+u_s_ve,"Unit of utility for Susceptible, vaccine experienced (vaccine failure or waning vaccine confered immunity)",0.815,0.572,1,beta
+u_e,Unit of utility for Exposed,0.815,0.572,1,beta
+u_i,Unit of utility for Infected,0.815,0.572,1,beta
+u_h,Unit of utility for Hospitalized,0.815,0.572,1,beta
+u_sq,Unit of utility for Sequalae,0.08,0.036,0.123,beta
+u_r,Unit of utility for Recovered,0.815,0.572,1,beta
+u_d,"Unit of utility for Death, absorbing",0,,,fixed
+u_adverse_events,Annual utility weight decrement during adverse events (EQ-5D scale),-0.12,-0.24,0,beta
+p_adverse_events,Proportion of vaccinated people who experience an adverse event,0.2,0.16,0.25,normal
+u_disutility_infection,Weekly disutility during acute infection phase,-0.009589041,-0.011506849,-0.007863014,beta
+u_disutility_hospitalization,Weekly disutility during acute hospitalization phase,-0.017,-0.034,0,beta
+duration_adverse_events,Duration of adverse events in weeks,1,,,fixed
+c_abrysvo,Cost of Abrysvo vaccine dose,319,,,fixed
+c_arexvy,Cost of Abrexvy dose,280,,,fixed
+c_vac_admin,Cost to administer vaccines,25,19,33,normal
+c_office,Cost per office visit,126,,,gamma
+c_ed,Cost per ED day,649,,,gamma
+c_hosp,Cost per hospital day,1116,,,gamma
+c_icu_v,Cost per icu day with mechanincal vent,4870,,,gamma
+c_icu,Cost per icu day without mechanical vent,3348,,,gamma
+c_pl,Cost per case of productivity loss,275,,,gamma
+c_care,Cost per case of caregiver time,583,,,gamma
+c_hfr,Cost of household financial risk (middle of distribution),92,83,267,gamma
+c_death,Cost to medicare for patient death (middle of distribution),9067,5268,12866,gamma
+o_infected,Days of infection without medical attention,5,2,8,normal
+o_Infected_ma,Days of infection with medical attention,10,7,14,normal
+o_infected_h,Days of infection to hospitalization,4,2,6.75,normal
+o_los_h,Days of hospitalization without ICU,6.2,1.2258,5.0582,gamma
+o_los_icu,Days in ICU,4.5,,,gamma
+p_discount_yr,Yearly discount percentage,0.03,,,fixed
+attack_rate,Proportion of S_VN population who will contract the disease each week,0.0162,0.0084,0.0308,normal
