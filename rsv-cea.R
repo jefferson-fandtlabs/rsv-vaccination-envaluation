@@ -2204,14 +2204,56 @@ psa_pct_ce <- psa_ce_data[
   by = vaccine
 ]
 
+# Mean ICER per vaccine across all simulations.
+# Computed as mean(inc_cost) / mean(inc_qaly) — the ratio of means, which
+# is the standard PSA mean ICER and matches the deterministic ICER when
+# the model is linear. Simulation-level ICERs are also averaged for
+# comparison but can be misleading when inc_qaly passes through zero.
+psa_mean_icer <- psa_ce_data[
+  , .(
+    mean_inc_cost   = mean(inc_cost),
+    mean_inc_qaly   = mean(inc_qaly),
+    mean_icer       = mean(inc_cost) / mean(inc_qaly),
+    mean_sim_icer   = mean(inc_cost / inc_qaly)
+  ),
+  by = vaccine
+]
+
 cat("=== PSA Step 8i: Cost-Effectiveness Summary ===\n\n")
-cat("Mean incremental estimates vs SOC:\n")
-print(psa_ce_means)
+cat("Mean incremental estimates and ICERs vs SOC:\n")
+print(psa_mean_icer)
 cat(sprintf(
   "\nProportion cost-effective at WTP = $%s/QALY:\n",
   format(wtp_threshold, big.mark = ",")
 ))
 print(psa_pct_ce)
+
+write_xlsx(
+  list(
+    "Mean ICER"          = as.data.frame(psa_mean_icer),
+    "Pct Cost-Effective" = as.data.frame(psa_pct_ce)
+  ),
+  "rsv_psa_summary.xlsx"
+)
+cat("PSA summary exported to: rsv_psa_summary.xlsx\n\n")
+
+# Pre-compute caption with actual mean values for each vaccine.
+# Pulled from psa_ce_means so the numbers always match the plotted points.
+fmt_mean <- function(vaccine_name) {
+  r <- psa_ce_means[psa_ce_means$vaccine == vaccine_name, ]
+  paste0(
+    vaccine_name, ": ",
+    "\u0394QALYs = ", format(round(r$inc_qaly, 1), big.mark = ","),
+    ", \u0394Cost = $", format(round(r$inc_cost),  big.mark = ",")
+  )
+}
+ce_plane_caption <- paste0(
+  "Long-dashed line: WTP threshold ($",
+  format(wtp_threshold, big.mark = ","), "/QALY).  ",
+  "Open circles (mean estimates) — ",
+  fmt_mean("Arexvy"), "; ", fmt_mean("Abrysvo"), ".  ",
+  "Ellipses: 95% confidence regions."
+)
 
 # Colourblind-safe palette (Okabe-Ito)
 vaccine_colours <- c("Arexvy" = "#0072B2", "Abrysvo" = "#D55E00")
@@ -2254,13 +2296,7 @@ ce_plane <- ggplot(
     x       = "Incremental QALYs vs Standard of Care",
     y       = "Incremental Cost (USD) vs Standard of Care",
     colour  = NULL,
-    caption = paste0(
-      "Long-dashed line: WTP threshold ($",
-      format(wtp_threshold, big.mark = ","),
-      "/QALY). ",
-      "Open circles: mean estimates. ",
-      "Ellipses: 95% confidence regions."
-    )
+    caption = ce_plane_caption
   ) +
   theme_minimal(base_size = 12) +
   theme(
