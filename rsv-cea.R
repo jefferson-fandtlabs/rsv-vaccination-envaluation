@@ -124,6 +124,26 @@ c_hfr <- input_parameters$value[input_parameters$parameter == "c_hfr"] # Cost of
 c_death <- input_parameters$value[input_parameters$parameter == "c_death"] # Cost to medicare for patient death (middle of distribution)
 
 # ==============================================================================
+# Analysis Perspective
+# ==============================================================================
+#
+# "societal"   - Includes all costs: direct medical costs plus indirect costs
+#                (productivity loss, caregiver time) and death costs.
+# "healthcare" - Includes only direct medical costs. Sets c_pl, c_care, and
+#                c_death to 0. c_hfr (household financial risk) is retained
+#                because it captures out-of-pocket burden borne by patients,
+#                which is typically included under a healthcare-payer lens.
+#
+perspective <- "healthcare"  # Change to "healthcare" for healthcare perspective
+
+if (perspective == "healthcare") {
+  c_pl    <- 0
+  c_care  <- 0
+  c_hfr   <- 0
+  c_death <- 0
+}
+
+# ==============================================================================
 # Step 2e: Outcomes
 # ==============================================================================
 
@@ -1203,7 +1223,9 @@ owsa_eligible_params <- c(
   "u_s_vn", "u_v", "u_s_ve", "u_e", "u_i", "u_h",
   "u_sq", "u_r", "u_adverse_events",
   "u_disutility_infection", "u_disutility_hospitalization",
-  "c_hfr", "c_death", "o_infected"
+  if (perspective == "societal") "c_hfr" else NULL,
+  if (perspective == "societal") "c_death" else NULL,
+  "o_infected"
 )
 
 # Willingness-to-pay threshold used to compute Net Monetary Benefit (NMB).
@@ -2021,8 +2043,10 @@ run_one_psa <- function(sim) {
     duration_adverse_events = duration_adverse_events,
     c_vac_admin = p_norm[["c_vac_admin"]],
     c_hosp = p_gamma[["c_hosp"]],
-    c_pl = p_gamma[["c_pl"]], c_care = p_gamma[["c_care"]],
-    c_hfr = p_gamma[["c_hfr"]], c_death = p_gamma[["c_death"]],
+    c_pl   = if (perspective == "healthcare") 0 else p_gamma[["c_pl"]],
+    c_care = if (perspective == "healthcare") 0 else p_gamma[["c_care"]],
+    c_hfr  = if (perspective == "healthcare") 0 else p_gamma[["c_hfr"]],
+    c_death = if (perspective == "healthcare") 0 else p_gamma[["c_death"]],
     o_infected = o_infected_s, o_los_h = p_gamma[["o_los_h"]],
     p_discount_wk = p_discount_wk,
     max_periods = max_periods,
