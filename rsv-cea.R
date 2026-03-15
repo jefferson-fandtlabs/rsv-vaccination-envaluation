@@ -129,10 +129,8 @@ c_death <- input_parameters$value[input_parameters$parameter == "c_death"] # Cos
 #
 # "societal"   - Includes all costs: direct medical costs plus indirect costs
 #                (productivity loss, caregiver time) and death costs.
-# "healthcare" - Includes only direct medical costs. Sets c_pl, c_care, and
-#                c_death to 0. c_hfr (household financial risk) is retained
-#                because it captures out-of-pocket burden borne by patients,
-#                which is typically included under a healthcare-payer lens.
+# "healthcare" - Includes only direct medical costs. Sets c_pl, c_care, c_death
+#                and c_hfr to 0.
 #
 perspective <- "healthcare"  # Change to "healthcare" for healthcare perspective
 
