@@ -362,15 +362,15 @@ generate_validation_report <- function() {
   check("Arexvy: Different total cost than SOC",
         summary_arexvy$total_cost != summary_soc$total_cost,
         sprintf("Arexvy: $%.2fM, SOC: $%.2fM, Diff: $%.2fM%s",
-                summary_arexvy$total_cost / 1e6, summary_soc$total_cost / 1e6,
-                arexvy_cost_diff / 1e6, arexvy_cost_status))
+                summary_arexvy$total_cost / 1e9, summary_soc$total_cost / 1e9,
+                arexvy_cost_diff / 1e9, arexvy_cost_status))
 
   abrysvo_cost_diff <- summary_abrysvo$total_cost - summary_soc$total_cost
   abrysvo_cost_status <- ifelse(abrysvo_cost_diff < 0, " (Cost-Saving)", " (Higher Cost)")
   check("Abrysvo: Different total cost than SOC",
         summary_abrysvo$total_cost != summary_soc$total_cost,
         sprintf("Abrysvo: $%.2fM, SOC: $%.2fM, Diff: $%.2fM%s",
-                summary_abrysvo$total_cost / 1e6, summary_soc$total_cost / 1e6,
+                summary_abrysvo$total_cost / 1e9, summary_soc$total_cost / 1e9,
                 abrysvo_cost_diff / 1e6, abrysvo_cost_status))
 
   # Vaccine scenarios should have different QALYs than SOC
@@ -433,13 +433,13 @@ generate_validation_report <- function() {
   # Check for reasonable total costs
   check("SOC: Total cost is reasonable",
         summary_soc$total_cost > 0 && summary_soc$total_cost < 1e12,
-        sprintf("$%.2fM", summary_soc$total_cost / 1e6))
+        sprintf("$%.2fM", summary_soc$total_cost / 1e9))
   check("Arexvy: Total cost is reasonable",
         summary_arexvy$total_cost > 0 && summary_arexvy$total_cost < 1e12,
-        sprintf("$%.2fM", summary_arexvy$total_cost / 1e6))
+        sprintf("$%.2fM", summary_arexvy$total_cost / 1e9))
   check("Abrysvo: Total cost is reasonable",
         summary_abrysvo$total_cost > 0 && summary_abrysvo$total_cost < 1e12,
-        sprintf("$%.2fM", summary_abrysvo$total_cost / 1e6))
+        sprintf("$%.2fM", summary_abrysvo$total_cost / 1e9))
 
   cat("\n")
   cat("==============================================================================\n")
@@ -1159,10 +1159,10 @@ results_summary <- data.table(
     ranked_vaccines[[1]]$scenario,
     ranked_vaccines[[2]]$scenario
   ),
-  `Total Cost (Millions)` = c(
-    format_currency(summary_soc$total_cost / 1e6),
-    format_currency(ranked_vaccines[[1]]$total_cost / 1e6),
-    format_currency(ranked_vaccines[[2]]$total_cost / 1e6)
+  `Total Cost (Billions)` = c(
+    format_currency(summary_soc$total_cost / 1e9),
+    format_currency(ranked_vaccines[[1]]$total_cost / 1e9),
+    format_currency(ranked_vaccines[[2]]$total_cost / 1e9)
   ),
   `Total QALY (Millions)` = c(
     format_number(summary_soc$total_qaly / 1e6),
@@ -1174,30 +1174,30 @@ results_summary <- data.table(
     format_number(ranked_vaccines[[1]]$nhb_100k / 1e6),
     format_number(ranked_vaccines[[2]]$nhb_100k / 1e6)
   ),
-  `NMB @$100k (Millions)` = c(
-    format_currency(summary_soc$nmb_100k / 1e6),
-    format_currency(ranked_vaccines[[1]]$nmb_100k / 1e6),
-    format_currency(ranked_vaccines[[2]]$nmb_100k / 1e6)
+  `NMB @$100k (Billions)` = c(
+    format_currency(summary_soc$nmb_100k / 1e9),
+    format_currency(ranked_vaccines[[1]]$nmb_100k / 1e9),
+    format_currency(ranked_vaccines[[2]]$nmb_100k / 1e9)
   ),
-  `INMB @$100k (Millions)` = c(
+  `INMB @$100k (Billions)` = c(
     "-",
-    format_currency(ranked_inmb[[1]][1] / 1e6),
-    format_currency(ranked_inmb[[2]][1] / 1e6)
+    format_currency(ranked_inmb[[1]][1] / 1e9),
+    format_currency(ranked_inmb[[2]][1] / 1e9)
   ),
   `NHB @$150k (Millions)` = c(
     format_number(summary_soc$nhb_150k / 1e6),
     format_number(ranked_vaccines[[1]]$nhb_150k / 1e6),
     format_number(ranked_vaccines[[2]]$nhb_150k / 1e6)
   ),
-  `NMB @$150k (Millions)` = c(
-    format_currency(summary_soc$nmb_150k / 1e6),
-    format_currency(ranked_vaccines[[1]]$nmb_150k / 1e6),
-    format_currency(ranked_vaccines[[2]]$nmb_150k / 1e6)
+  `NMB @$150k (Billions)` = c(
+    format_currency(summary_soc$nmb_150k / 1e9),
+    format_currency(ranked_vaccines[[1]]$nmb_150k / 1e9),
+    format_currency(ranked_vaccines[[2]]$nmb_150k / 1e9)
   ),
-  `INMB @$150k (Millions)` = c(
+  `INMB @$150k (Billions)` = c(
     "-",
-    format_currency(ranked_inmb[[1]][2] / 1e6),
-    format_currency(ranked_inmb[[2]][2] / 1e6)
+    format_currency(ranked_inmb[[1]][2] / 1e9),
+    format_currency(ranked_inmb[[2]][2] / 1e9)
   )
 )
 
@@ -1510,9 +1510,9 @@ make_tornado_plot <- function(owsa_dt, col_lower, col_upper,
                               inmb_baseline, title_str) {
 
   plot_dt <- data.table(
-    label      = owsa_dt$description,
-    val_lower  = owsa_dt[[col_lower]],
-    val_upper  = owsa_dt[[col_upper]]
+    label     = owsa_dt$description,
+    val_lower = owsa_dt[[col_lower]],
+    val_upper = owsa_dt[[col_upper]]
   )
 
   # Replace non-finite values with baseline (collapses bar to zero width)
@@ -1523,39 +1523,66 @@ make_tornado_plot <- function(owsa_dt, col_lower, col_upper,
   plot_dt[, bar_max   := pmax(val_lower, val_upper)]
   plot_dt[, bar_range := bar_max - bar_min]
 
-  # Remove zero-width bars
-  plot_dt <- plot_dt[bar_range > 0]
+  # Remove zero-width bars, then keep top 10 by influence
+  plot_dt <- plot_dt[bar_range > 0][order(-bar_range)][seq_len(min(10, .N))]
 
   if (nrow(plot_dt) == 0) {
     cat("No valid parameters for tornado diagram:", title_str, "\n")
     return(NULL)
   }
 
+  # Scale INMB to billions for readable axis labels
+  scale_b    <- 1e9
+  plot_dt[, bar_min_b := bar_min / scale_b]
+  plot_dt[, bar_max_b := bar_max / scale_b]
+  baseline_b <- inmb_baseline / scale_b
+
   # Sort ascending so the widest bar plots at the top in ggplot
   plot_dt <- plot_dt[order(bar_range)]
-  plot_dt[, label := factor(label, levels = label)]
 
-  ggplot(plot_dt, aes(y = label)) +
+  # Wrap long parameter labels at 45 characters (base R strwrap)
+  plot_dt[, label_w := sapply(label, function(x)
+    paste(strwrap(x, width = 45), collapse = "\n"))]
+  plot_dt[, label_w := factor(label_w, levels = unique(label_w))]
+
+  # Two-colour directional segments anchored at the baseline:
+  #   blue  = right of baseline (higher INMB, more favorable for vaccine)
+  #   orange = left  of baseline (lower  INMB, less favorable)
+  seg_left <- plot_dt[bar_min_b < baseline_b, .(
+    label_w, x = bar_min_b, xend = pmin(bar_max_b, baseline_b)
+  )]
+  seg_right <- plot_dt[bar_max_b > baseline_b, .(
+    label_w, x = pmax(bar_min_b, baseline_b), xend = bar_max_b
+  )]
+
+  ggplot(plot_dt, aes(y = label_w)) +
     geom_segment(
-      aes(x = bar_min, xend = bar_max, yend = label),
-      linewidth = 6, color = "#2B7BB9", alpha = 0.75
+      data = seg_left,
+      aes(x = x, xend = xend, yend = label_w),
+      linewidth = 6, color = "#D55E00", alpha = 0.80
+    ) +
+    geom_segment(
+      data = seg_right,
+      aes(x = x, xend = xend, yend = label_w),
+      linewidth = 6, color = "#2B7BB9", alpha = 0.80
     ) +
     geom_vline(
-      xintercept = inmb_baseline,
+      xintercept = baseline_b,
       color = "red", linetype = "dashed", linewidth = 0.9
     ) +
-    scale_x_continuous(labels = scales::comma) +
+    scale_x_continuous(
+      labels = function(x) sprintf("$%.1fB", x),
+      expand = expansion(mult = 0.10)
+    ) +
     labs(
       title    = title_str,
-      subtitle = sprintf(
-        "Baseline INMB = $%s",
-        formatC(inmb_baseline, format = "f", digits = 0, big.mark = ",")
-      ),
-      x       = "INMB ($)",
-      y       = NULL,
-      caption = paste0(
+      subtitle = sprintf("Baseline INMB = $%.2fB", baseline_b),
+      x        = "INMB ($ billions)",
+      y        = NULL,
+      caption  = paste0(
         "Red dashed line = baseline INMB.  ",
-        "Parameters sorted by influence (widest bar at top)."
+        "Blue = higher INMB (more favorable); orange = lower INMB (less favorable).\n",
+        "Top 10 parameters by INMB range shown."
       )
     ) +
     theme_minimal(base_size = 11) +
@@ -1563,7 +1590,8 @@ make_tornado_plot <- function(owsa_dt, col_lower, col_upper,
       plot.title    = element_text(face = "bold", hjust = 0.5),
       plot.subtitle = element_text(hjust = 0.5),
       axis.text.y   = element_text(size = 9),
-      plot.caption  = element_text(size = 8, hjust = 0)
+      plot.caption  = element_text(size = 8, hjust = 0),
+      plot.margin   = margin(t = 5, r = 15, b = 5, l = 10)
     )
 }
 
